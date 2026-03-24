@@ -1,0 +1,24 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/duel/duel_test_scene.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/hex/hex_grid.gd" id="2"]
+
+[node name="DuelTestScene" type="Node2D"]
+script = ExtResource("1")
+
+[node name="Camera2D" type="Camera2D" parent="."]
+zoom = Vector2(1.2, 1.2)
+
+[node name="HexGrid" type="Node2D" parent="."]
+script = ExtResource("2")
+hex_size = 40.0
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="InfoLabel" type="Label" parent="CanvasLayer"]
+offset_left = 20.0
+offset_top = 20.0
+offset_right = 900.0
+offset_bottom = 60.0
+theme_override_font_sizes/font_size = 18
+text = "Click a hex to inspect it"
