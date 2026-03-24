@@ -8,6 +8,7 @@ var terrain: TerrainTypes.Terrain = TerrainTypes.Terrain.GRASSLAND
 var occupant: Node = null  # unit standing on this hex, or null
 var is_destroyed: bool = false  # for destructible terrain (bridge, forest)
 var effect_used: bool = false  # for one-time effects (oasis, pressure plate)
+var valid_spawn: bool = false  # whether the player can summon creatures here
 
 
 func _init(p_coord: Vector2i, p_terrain: TerrainTypes.Terrain) -> void:

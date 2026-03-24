@@ -49,7 +49,19 @@ func load_layout(layout: Array) -> void:
 			var terrain: int = layout[row][col]
 			tiles[coord] = HexTileData.new(coord, terrain as TerrainTypes.Terrain)
 
+	_assign_spawn_tiles()
 	queue_redraw()
+
+
+## Mark which tiles are valid spawn zones for the player.
+## Currently: bottom row, columns 1-6 (excludes corner columns).
+func _assign_spawn_tiles() -> void:
+	var spawn_row: int = grid_rows - 1
+	for col: int in range(1, grid_cols - 1):
+		var coord: Vector2i = Vector2i(col, spawn_row)
+		var tile: HexTileData = tiles.get(coord)
+		if tile:
+			tile.valid_spawn = true
 
 
 ## Get the HexTileData at a coordinate, or null if out of bounds.
@@ -84,6 +96,10 @@ func _draw() -> void:
 		# Fill with terrain color
 		var fill_color: Color = TerrainTypes.get_debug_color(tile.terrain)
 		_draw_hex_filled(center, fill_color)
+
+		# Spawn zone tint
+		if tile.valid_spawn:
+			_draw_hex_filled(center, Color(0.2, 0.6, 1.0, 0.25))
 
 		# Draw highlight overlay if present
 		if highlight_tiles.has(coord):
