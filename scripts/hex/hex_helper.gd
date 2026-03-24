@@ -1,6 +1,6 @@
 ## Pure static hex math utilities.
 ## Uses offset coordinates for storage/display, axial/cube for all math.
-## Offset = "even-q" vertical layout (flat-top hexagons, even columns shifted down).
+## Offset = "odd-q" vertical layout (flat-top hexagons, odd columns shifted down).
 class_name HexHelper
 extends RefCounted
 
@@ -9,14 +9,14 @@ extends RefCounted
 ## Convert offset (col, row) to axial (q, r).
 static func offset_to_axial(coord: Vector2i) -> Vector2i:
 	var q: int = coord.x
-	var r: int = coord.y - (coord.x + (coord.x & 1)) / 2
+	var r: int = coord.y - (coord.x - (coord.x & 1)) / 2
 	return Vector2i(q, r)
 
 
 ## Convert axial (q, r) to offset (col, row).
 static func axial_to_offset(axial: Vector2i) -> Vector2i:
 	var col: int = axial.x
-	var row: int = axial.y + (axial.x + (axial.x & 1)) / 2
+	var row: int = axial.y + (axial.x - (axial.x & 1)) / 2
 	return Vector2i(col, row)
 
 
