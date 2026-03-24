@@ -99,7 +99,7 @@ func _draw() -> void:
 
 		# Spawn zone tint
 		if tile.valid_spawn:
-			_draw_hex_filled(center, Color(0.2, 0.6, 1.0, 0.25))
+			_draw_hex_filled(center, Color(1.0, 0.9, 0.2, 0.25))
 
 		# Draw highlight overlay if present
 		if highlight_tiles.has(coord):
