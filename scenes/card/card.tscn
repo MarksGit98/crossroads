@@ -1,0 +1,24 @@
+[gd_scene format=3 uid="uid://c2d0o3140vgad"]
+
+[ext_resource type="Script" uid="uid://bu2oajam4th0m" path="res://scripts/cards/card.gd" id="1_imta7"]
+[ext_resource type="Texture2D" uid="uid://bcncpudmh0vjs" path="res://assets/cards/creatures/viking-creature-class-card.png" id="1_qnn7r"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_imta7"]
+size = Vector2(289, 399)
+
+[node name="Card" type="Node2D" unique_id=198352323]
+script = ExtResource("1_imta7")
+
+[node name="CardImage" type="Sprite2D" parent="." unique_id=302204913]
+position = Vector2(7, -10)
+scale = Vector2(0.22, 0.22)
+texture = ExtResource("1_qnn7r")
+
+[node name="Area2D" type="Area2D" parent="." unique_id=944268704]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Area2D" unique_id=1942485522]
+position = Vector2(6.5, -10.5)
+shape = SubResource("RectangleShape2D_imta7")
+
+[connection signal="mouse_entered" from="Area2D" to="." method="_on_area_2d_mouse_entered"]
+[connection signal="mouse_exited" from="Area2D" to="." method="_on_area_2d_mouse_exited"]
