@@ -1,0 +1,31 @@
+[gd_scene format=3 uid="uid://covrj71imfp5r"]
+
+[ext_resource type="Script" uid="uid://kvtjl2stl2kp" path="res://scripts/ui/mana_display.gd" id="1_mana"]
+[ext_resource type="Texture2D" uid="uid://bk6m6ir7v1t3k" path="res://sample images/example mana crystal.png" id="2_wvyb6"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_mana"]
+font_size = 40
+outline_size = 6
+outline_color = Color(0, 0, 0, 1)
+shadow_size = 4
+shadow_color = Color(0, 0, 0, 0.7)
+shadow_offset = Vector2(2, 2)
+
+[node name="ManaDisplay" type="Node2D" unique_id=1930399947]
+position = Vector2(60, 1010)
+script = ExtResource("1_mana")
+
+[node name="CrystalSprite" type="Sprite2D" parent="." unique_id=732557894]
+position = Vector2(1.0000014, -2.9999757)
+scale = Vector2(0.11250001, 0.10273438)
+texture = ExtResource("2_wvyb6")
+
+[node name="ManaLabel" type="Label" parent="." unique_id=800342855]
+offset_left = -28.0
+offset_top = -36.0
+offset_right = 32.0
+offset_bottom = 24.0
+text = "5"
+label_settings = SubResource("LabelSettings_mana")
+horizontal_alignment = 1
+vertical_alignment = 1

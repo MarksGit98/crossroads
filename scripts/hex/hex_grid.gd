@@ -86,6 +86,36 @@ func clear_highlights() -> void:
 	queue_redraw()
 
 
+## Return all valid spawn hexes (passable, in spawn zone, unoccupied).
+func get_valid_spawn_hexes() -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	for coord: Vector2i in tiles:
+		var tile: HexTileData = tiles[coord]
+		if tile.valid_spawn and tile.is_passable() and not tile.is_occupied():
+			result.append(coord)
+	return result
+
+
+## Place a creature on a hex, setting the tile's occupant reference.
+## Returns true if placement succeeded.
+func place_creature(creature: Creature, coord: Vector2i) -> bool:
+	var tile: HexTileData = get_tile(coord)
+	if tile == null or tile.is_occupied():
+		return false
+	tile.occupant = creature
+	creature.position = HexHelper.hex_to_world(coord, hex_size)
+	if creature.get_parent() != self:
+		add_child(creature)
+	return true
+
+
+## Remove a creature from its hex, clearing the tile's occupant.
+func remove_creature(coord: Vector2i) -> void:
+	var tile: HexTileData = get_tile(coord)
+	if tile:
+		tile.occupant = null
+
+
 # --- Drawing ---
 
 func _draw() -> void:

@@ -1,6 +1,13 @@
 extends Node2D
 
 # =============================================================================
+# Signals
+# =============================================================================
+
+signal card_played(card_data: CardData)
+signal card_discarded(card_data: CardData)
+
+# =============================================================================
 # Fan Layout Constants
 # =============================================================================
 # Cards are arranged along an invisible circle (Slay the Spire / Hearthstone
@@ -38,78 +45,176 @@ const TWEEN_DURATION: float = 0.2
 # Interaction Constants
 # =============================================================================
 
-
-const COLLISION_MASK_CARD: int = 1
 const IDLE_CARD_Z_INDEX: int = 1
 const HOVERED_CARD_Z_INDEX: int = 10
-const DRAGGED_CARD_Z_INDEX: int = 20
+const SELECTED_CARD_Z_INDEX: int = 20
 const DRAG_OFFSET_LERP_SPEED: float = 0.0025
 const DRAG_FOLLOW_SPEED: float = 0.05
 const SHAKE_INTENSITY: float = 9.0
 const SHAKE_DURATION: float = 0.06
 
-var VIEWPORT_SIZE_Y: float = get_viewport_rect().size.y
-var VIEWPORT_SIZE_X: float = get_viewport_rect().size.x
-var CARD_HEIGHT: float;
+## Y coordinate (screen space) above which releasing a card attempts to play it.
+const PLAY_THRESHOLD_Y: float = 400.0
+
+## Color for highlighting valid target hexes during targeting mode.
+const TARGET_HIGHLIGHT_COLOR: Color = Color(0.2, 0.9, 0.3, 0.3)
+
+# =============================================================================
+# Hand Mode
+# =============================================================================
+
+## NORMAL: cards can be hovered, dragged, etc.
+## TARGETING: a card has been committed, waiting for the player to pick a hex.
+enum HandMode { NORMAL, TARGETING }
+
+# =============================================================================
+# Computed at runtime
+# =============================================================================
+
+var CARD_HEIGHT: float
+var CARD_WIDTH: float
 
 ## How far (in local Y) a hovered card lifts above its resting arc position.
 ## Derived at runtime from the card's collision shape so it scales with card size.
-var HOVER_LIFT = VIEWPORT_SIZE_Y - CARD_HEIGHT
-# ============================================================================
+var hover_lift: float
+
+# =============================================================================
 # State
 # =============================================================================
 
-var current_hovered_card: Node2D = null
-var hovered_index: int = -1
-var card_being_dragged: Node2D = null
+## Offset between card position and cursor at drag start — lerps toward zero
+## so the card drifts to center on the cursor over time.
 var drag_offset: Vector2
 var screen_size: Vector2
 
+## Current hand interaction mode.
+var _mode: HandMode = HandMode.NORMAL
 
+## The card currently in targeting mode (waiting for hex selection).
+var _pending_card: Card = null
+
+## Valid target hexes for the pending card (cached when entering targeting mode).
+var _valid_targets: Array[Vector2i] = []
+
+## For multi-hex targeting (traps): hexes selected so far.
+var _selected_targets: Array[Vector2i] = []
+
+## How many hexes the pending card needs (1 for most, >1 for multi-hex traps).
+var _required_target_count: int = 1
+
+## Reference to the Deck node (Hand is inside a CanvasLayer, Deck is a sibling of that layer).
+@onready var deck: Deck = $"../../DeckLayer/Deck"
+
+## Reference to the Player node for mana checks.
+@onready var player: Player = $"../../Player"
+
+## Reference to the HexGrid for targeting. Wired by DuelTestScene.
+var board: HexGrid = null
+
+## Preloaded card scenes by type for dynamic instantiation.
+var _card_scenes: Dictionary = {
+	CardTypes.CardType.CREATURE: preload("res://scenes/card/creature_card.tscn"),
+	CardTypes.CardType.SPELL: preload("res://scenes/card/spell_card.tscn"),
+	CardTypes.CardType.TRAP: preload("res://scenes/card/trap_card.tscn"),
+	CardTypes.CardType.EQUIPMENT: preload("res://scenes/card/equip_card.tscn"),
+	CardTypes.CardType.TERRAIN_MOD: preload("res://scenes/card/card.tscn"),
+}
 
 
 func _ready() -> void:
 	screen_size = get_viewport_rect().size
 	# Anchor the hand at the bottom-center of the screen.
 	# All card positions calculated by arrange_hand() are relative to this point.
-	position = Vector2(screen_size.x / 2.0, screen_size.y - 150.0)
+	position = Vector2(screen_size.x / 2.0, screen_size.y - 120.0)
+	# Compute card size from a temporary instance since hand starts empty.
 	_compute_card_size()
-	arrange_hand()
+	# Compute how much we need to lift each card in the arc so that it is fully
+	# visible on hover in the hand. Divide CARD_HEIGHT by ~2 as the card origin
+	# point is in the center of the card.
+	hover_lift = -position.y + (screen_size.y - CARD_HEIGHT / 1.9)
+	draw_cards(6)
 
 
-## Calculates hover lift from the card's collision height.
-##
-## We lift by roughly half the card's height. This is enough to reveal the full
-## card above the hand area, but NOT so much that the mouse leaves the collision
-## shape (which would cause hover flicker). The mouse stays in the bottom half
-## of the card after the lift.
+## Calculates card visual height from the card scene's sprite.
+## Reads the texture and scale directly from the scene resource without
+## instantiating into the tree (avoids triggering _ready signal connections).
+## Base card scene — used for size computation (inherited scenes don't
+## expose base properties in their SceneState).
+var _base_card_scene: PackedScene = preload("res://scenes/card/card.tscn")
+
 func _compute_card_size() -> void:
-	if get_child_count() == 0:
-		return
-	var sample_card: Node2D = get_child(0)
-	# Read the visual height from the sprite texture rather than the collision
-	# shape. This stays correct regardless of what collision shape type is used.
-	var sprite: Sprite2D = sample_card.card_image
-	if sprite and sprite.texture:
-		CARD_HEIGHT = sprite.texture.get_height() * sprite.scale.y
-	
+	var card_scene_state: SceneState = _base_card_scene.get_state()
+	# Find the CardImage sprite node and read its texture + scale.
+	for i: int in range(card_scene_state.get_node_count()):
+		if card_scene_state.get_node_name(i) == &"CardImage":
+			var tex: Texture2D = null
+			var sprite_scale := Vector2(1.0, 1.0)
+			for p: int in range(card_scene_state.get_node_property_count(i)):
+				var prop_name: StringName = card_scene_state.get_node_property_name(i, p)
+				if prop_name == &"texture":
+					tex = card_scene_state.get_node_property_value(i, p)
+				elif prop_name == &"scale":
+					sprite_scale = card_scene_state.get_node_property_value(i, p)
+			if tex:
+				CARD_HEIGHT = tex.get_height() * sprite_scale.y
+				CARD_WIDTH = tex.get_width() * sprite_scale.x
+			break
 
 
 func _process(_delta: float) -> void:
-	RenderingServer.global_shader_parameter_set("mouse_screen_pos", get_global_mouse_position())
-	if card_being_dragged:
-		apply_drag_follow()
+	RenderingServer.global_shader_parameter_set("mouse_screen_pos", get_viewport().get_mouse_position())
+	if _mode == HandMode.TARGETING:
+		return  # No hover/drag while targeting.
+	var selected: Card = _get_selected_card()
+	if selected:
+		_apply_drag_follow(selected)
+	else:
+		_update_hover()
+
+
+# =============================================================================
+# Hover Detection (poll-based)
+# =============================================================================
+
+## Poll-based hover detection. Called every frame from _process().
+## Uses bounding-rect hit testing instead of physics raycasting because
+## get_global_mouse_position() returns camera-warped coordinates inside
+## a CanvasLayer, making physics queries miss.
+func _update_hover() -> void:
+	var card_under_mouse: Card = _find_card_at_mouse()
+	var current_hovered: Card = _get_hovered_card()
+
+	if card_under_mouse == current_hovered:
+		return
+
+	# Unhover the old card
+	if current_hovered:
+		current_hovered.set_state(CardTypes.CardState.IDLE)
+
+	# Hover the new card (only if it's interactable)
+	if card_under_mouse and card_under_mouse.state == CardTypes.CardState.IDLE:
+		card_under_mouse.set_state(CardTypes.CardState.HOVERED)
+		shake_card(card_under_mouse)
+
+	arrange_hand()
 
 
 func _input(event: InputEvent) -> void:
+	if _mode == HandMode.TARGETING:
+		_handle_targeting_input(event)
+		return
+
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
-			var card: Node2D = raycast_check_for_card()
-			if card:
-				start_drag(card)
+			var hovered: Card = _get_hovered_card()
+			if hovered:
+				_start_drag(hovered)
+				get_viewport().set_input_as_handled()
 		else:
-			if card_being_dragged:
-				finish_drag()
+			var selected: Card = _get_selected_card()
+			if selected:
+				_finish_drag(selected)
+				get_viewport().set_input_as_handled()
 
 
 # =============================================================================
@@ -139,7 +244,7 @@ func _input(event: InputEvent) -> void:
 ##
 ## -- Hover behavior --
 ##
-## When a card is hovered:
+## When a card is HOVERED:
 ##   - It rises HOVER_LIFT pixels above its arc position
 ##   - Its rotation straightens to 0 (faces the player)
 ##   - It scales up to HOVERED_CARD_SCALE
@@ -147,11 +252,28 @@ func _input(event: InputEvent) -> void:
 ##     offset: immediate neighbors get NEIGHBOR_PUSH_ANGLE degrees of push,
 ##     cards 2 away get half that, etc. This creates a smooth "parting" effect
 ##     that follows the curve naturally.
+
+## Returns only Card children (excludes non-card nodes).
+func _get_card_children() -> Array[Card]:
+	var result: Array[Card] = []
+	for child: Node in get_children():
+		if child is Card:
+			result.append(child as Card)
+	return result
+
+
 func arrange_hand() -> void:
-	var cards: Array[Node] = get_children()
+	var cards: Array[Card] = _get_card_children()
 	var count: int = cards.size()
 	if count == 0:
 		return
+
+	# Find the hovered card index (if any) for neighbor push calculation.
+	var hovered_index: int = -1
+	for idx: int in count:
+		if cards[idx].state == CardTypes.CardState.HOVERED:
+			hovered_index = idx
+			break
 
 	# Total fan angle scales with card count but caps at MAX_FAN_ANGLE.
 	# 1 card = 0 deg (centered), 5 cards = 20 deg, 9 cards = 40 deg.
@@ -159,10 +281,10 @@ func arrange_hand() -> void:
 	var total_angle_rad: float = deg_to_rad(total_angle_deg)
 
 	for i in count:
-		var card: Node2D = cards[i] as Node2D
+		var card: Card = cards[i]
 
-		# The dragged card is controlled by the drag system, skip it.
-		if card == card_being_dragged:
+		# The selected (dragged) card is controlled by drag follow, skip it.
+		if card.state == CardTypes.CardState.SELECTED:
 			continue
 
 		# -- Card's base angle on the arc --
@@ -199,23 +321,23 @@ func arrange_hand() -> void:
 		# Left-to-right draw order so right cards overlap left ones.
 		var target_z: int = IDLE_CARD_Z_INDEX + i
 
-		# -- Hovered card: lift out of the hand --
-		if i == hovered_index:
-			# Lift relative to the card's arc position. hover_lift is derived
-			# from the card's collision height so it scales with card size.
-			card_pos.y = VIEWPORT_SIZE_Y
-			
-			# Straighten so the player can read it.
-			card_rot = 0.0
-			target_scale = HOVERED_CARD_SCALE
-			target_z = HOVERED_CARD_Z_INDEX
+		# -- State-driven overrides --
+		match card.state:
+			CardTypes.CardState.HOVERED:
+				card_pos.y = hover_lift
+				card_rot = 0.0
+				target_scale = HOVERED_CARD_SCALE
+				target_z = HOVERED_CARD_Z_INDEX
+			CardTypes.CardState.DISABLED:
+				# Disabled cards stay in arc position but are visually dimmed
+				# (handled by card._apply_state_visuals).
+				pass
 
 		card.z_index = target_z
 		# Tween to the target transform. A new tween on the same property
 		# automatically supersedes any in-progress tween in Godot 4.
 		var tween: Tween = create_tween().set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
 		tween.set_parallel(true)
-		print(card_pos)
 		tween.tween_property(card, "position", card_pos, TWEEN_DURATION)
 		tween.tween_property(card, "rotation", card_rot, TWEEN_DURATION)
 		tween.tween_property(card, "scale", target_scale, TWEEN_DURATION)
@@ -225,99 +347,286 @@ func arrange_hand() -> void:
 # Drag System
 # =============================================================================
 
-func apply_drag_follow() -> void:
+func _apply_drag_follow(card: Card) -> void:
 	# Shrink the grab offset toward zero so the card drifts to the cursor over time.
 	drag_offset = drag_offset.lerp(Vector2.ZERO, DRAG_OFFSET_LERP_SPEED)
-	var target: Vector2 = get_global_mouse_position() + drag_offset
+	var target: Vector2 = get_viewport().get_mouse_position() + drag_offset
 	# Clamp to viewport so the card can't be dragged offscreen.
 	target.x = clampf(target.x, 0.0, screen_size.x)
 	target.y = clampf(target.y, 0.0, screen_size.y)
 	# Use global_position since Hand is offset from the world origin.
-	card_being_dragged.global_position = card_being_dragged.global_position.lerp(target, DRAG_FOLLOW_SPEED)
+	card.global_position = card.global_position.lerp(target, DRAG_FOLLOW_SPEED)
 
 
-func start_drag(card: Node2D) -> void:
-	card_being_dragged = card
+func _start_drag(card: Card) -> void:
+	card.set_state(CardTypes.CardState.SELECTED)
 	# Store the initial offset between card and cursor so the grab doesn't snap.
-	drag_offset = card.global_position - get_global_mouse_position()
+	drag_offset = card.global_position - get_viewport().get_mouse_position()
 	card.scale = DEFAULT_CARD_SCALE
-	card.z_index = DRAGGED_CARD_Z_INDEX
-	card.set_hover_shader(true)
-	# Clear hover state — the remaining cards rearrange to fill the gap.
-	hovered_index = -1
-	current_hovered_card = null
+	card.z_index = SELECTED_CARD_Z_INDEX
 	arrange_hand()
 
 
-func finish_drag() -> void:
-	card_being_dragged.set_hover_shader(false)
-	card_being_dragged = null
-	# Check if the cursor landed on another card after releasing.
-	var hovered: Node2D = raycast_check_for_card()
-	if hovered:
-		current_hovered_card = hovered
-		hovered_index = hovered.get_index()
+func _finish_drag(card: Card) -> void:
+	var mouse_y: float = get_viewport().get_mouse_position().y
+	if mouse_y < PLAY_THRESHOLD_Y:
+		_try_play_card(card)
+	else:
+		# Return to hand — released below the play threshold.
+		card.set_state(CardTypes.CardState.IDLE)
+		var hovered: Card = _find_card_at_mouse()
+		if hovered and hovered.state == CardTypes.CardState.IDLE:
+			hovered.set_state(CardTypes.CardState.HOVERED)
+		arrange_hand()
+
+
+# =============================================================================
+# Play Card System
+# =============================================================================
+
+## Attempt to play a card after it's been dragged above the play threshold.
+func _try_play_card(card: Card) -> void:
+	var context: Dictionary = _build_play_context(card)
+	if not card.can_play(context):
+		# Can't afford — shake and return to hand.
+		card.set_state(CardTypes.CardState.IDLE)
+		shake_card(card)
+		arrange_hand()
+		return
+
+	if card.needs_targeting():
+		_enter_targeting(card)
+	else:
+		# No targeting needed — play immediately.
+		card.play(context)
+		_finalize_play(card)
+
+
+## Build the context dictionary for playing a card.
+func _build_play_context(card: Card, target_hexes: Array[Vector2i] = []) -> Dictionary:
+	return {
+		"player": player,
+		"board": board,
+		"target_hexes": target_hexes,
+		"target_units": [],
+	}
+
+
+## Finalize playing a card: transition state, discard data, free the node.
+func _finalize_play(card: Card) -> void:
+	card.set_state(CardTypes.CardState.PLAYED)
+	if card.card_data:
+		deck.add_to_discard(card.card_data)
+		card_played.emit(card.card_data)
+	card.queue_free()
 	arrange_hand()
 
 
 # =============================================================================
-# Card Interaction
+# Targeting Mode
 # =============================================================================
 
-func raycast_check_for_card() -> Node2D:
-	var space_state: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state
-	var parameters := PhysicsPointQueryParameters2D.new()
-	parameters.position = get_global_mouse_position()
-	parameters.collide_with_areas = true
-	parameters.collision_mask = COLLISION_MASK_CARD
-	var result: Array[Dictionary] = space_state.intersect_point(parameters)
-	if result.size() > 0:
-		return get_card_with_highest_z_index(result)
+## Enter targeting mode: highlight valid hexes, wait for player to click one.
+func _enter_targeting(card: Card) -> void:
+	if board == null:
+		push_warning("Hand: cannot enter targeting mode — no board reference.")
+		card.set_state(CardTypes.CardState.IDLE)
+		arrange_hand()
+		return
+
+	_mode = HandMode.TARGETING
+	_pending_card = card
+	_selected_targets.clear()
+
+	# Determine how many targets are needed (multi-hex traps).
+	if card is TrapCard:
+		_required_target_count = (card as TrapCard).target_hex_count()
+	else:
+		_required_target_count = 1
+
+	# Compute and highlight valid targets.
+	_valid_targets = card.get_valid_targets(board)
+
+	if _valid_targets.is_empty():
+		# No valid targets — cancel and return card to hand.
+		push_warning("Hand: no valid targets for '%s'." % card.card_data.card_name)
+		_cancel_targeting()
+		return
+
+	_highlight_valid_targets()
+
+	# Dim the card in hand to show it's "committed" but not yet resolved.
+	card.set_state(CardTypes.CardState.DISABLED)
+	arrange_hand()
+
+	# Listen for hex clicks from the board.
+	if not board.hex_clicked.is_connected(_on_target_hex_clicked):
+		board.hex_clicked.connect(_on_target_hex_clicked)
+
+
+## Cancel targeting mode — return the card to hand, clear highlights.
+func _cancel_targeting() -> void:
+	if board:
+		board.clear_highlights()
+		if board.hex_clicked.is_connected(_on_target_hex_clicked):
+			board.hex_clicked.disconnect(_on_target_hex_clicked)
+
+	if _pending_card:
+		_pending_card.set_state(CardTypes.CardState.IDLE)
+
+	_mode = HandMode.NORMAL
+	_pending_card = null
+	_valid_targets.clear()
+	_selected_targets.clear()
+	_required_target_count = 1
+	arrange_hand()
+
+
+## Highlight valid target hexes on the board.
+func _highlight_valid_targets() -> void:
+	var highlights: Dictionary = {}
+	for coord: Vector2i in _valid_targets:
+		highlights[coord] = TARGET_HIGHLIGHT_COLOR
+	# Also highlight already-selected hexes in a brighter color.
+	for coord: Vector2i in _selected_targets:
+		highlights[coord] = Color(0.1, 1.0, 0.4, 0.5)
+	board.set_highlights(highlights)
+
+
+## Handle input during targeting mode.
+func _handle_targeting_input(event: InputEvent) -> void:
+	# Right-click or ESC cancels targeting.
+	if event is InputEventMouseButton:
+		var mb: InputEventMouseButton = event as InputEventMouseButton
+		if mb.pressed and mb.button_index == MOUSE_BUTTON_RIGHT:
+			_cancel_targeting()
+			get_viewport().set_input_as_handled()
+	elif event is InputEventKey:
+		var key: InputEventKey = event as InputEventKey
+		if key.pressed and key.keycode == KEY_ESCAPE:
+			_cancel_targeting()
+			get_viewport().set_input_as_handled()
+
+
+## Called when the player clicks a hex while in targeting mode.
+func _on_target_hex_clicked(coord: Vector2i) -> void:
+	if _mode != HandMode.TARGETING or _pending_card == null:
+		return
+
+	# Ignore clicks on invalid hexes.
+	if coord not in _valid_targets:
+		return
+
+	# Ignore duplicate selections for multi-hex targeting.
+	if coord in _selected_targets:
+		return
+
+	_selected_targets.append(coord)
+
+	# If we still need more targets (multi-hex trap), update highlights and wait.
+	if _selected_targets.size() < _required_target_count:
+		_highlight_valid_targets()
+		return
+
+	# All targets selected — play the card.
+	_confirm_targeting()
+
+
+## Confirm targeting: spend mana, play card with targets, clean up.
+func _confirm_targeting() -> void:
+	var card: Card = _pending_card
+	var targets: Array[Vector2i] = _selected_targets.duplicate()
+
+	# Disconnect hex_clicked before playing to avoid re-entrancy.
+	if board and board.hex_clicked.is_connected(_on_target_hex_clicked):
+		board.hex_clicked.disconnect(_on_target_hex_clicked)
+	if board:
+		board.clear_highlights()
+
+	# Reset mode before play() so any signals emitted during play see NORMAL mode.
+	_mode = HandMode.NORMAL
+	_pending_card = null
+	_valid_targets.clear()
+	_selected_targets.clear()
+	_required_target_count = 1
+
+	# Re-enable the card so it can transition to PLAYED.
+	card.set_state(CardTypes.CardState.IDLE)
+
+	# Build context with selected targets and play.
+	var context: Dictionary = _build_play_context(card, targets)
+	card.play(context)
+	_finalize_play(card)
+
+
+# =============================================================================
+# Card Queries
+# =============================================================================
+
+## Find the card under the mouse using bounding-rect hit testing.
+## Cards live inside a CanvasLayer so global_position == screen position.
+## We compare against get_viewport().get_mouse_position() which is also
+## in screen space, avoiding the coordinate mismatch that breaks physics
+## raycasting inside CanvasLayers.
+func _find_card_at_mouse() -> Card:
+	var mouse: Vector2 = get_viewport().get_mouse_position()
+	var best_card: Card = null
+	var best_z: int = -1
+	var half_w: float = CARD_WIDTH * 0.5
+	var half_h: float = CARD_HEIGHT * 0.5
+	for card: Card in _get_card_children():
+		if card.state == CardTypes.CardState.SELECTED:
+			continue
+		if card.state == CardTypes.CardState.DISABLED:
+			continue
+		# Scale the hit rect to match the card's current visual size.
+		var sw: float = half_w * card.scale.x
+		var sh: float = half_h * card.scale.y
+		var center: Vector2 = card.global_position
+		if mouse.x >= center.x - sw and mouse.x <= center.x + sw \
+				and mouse.y >= center.y - sh and mouse.y <= center.y + sh:
+			if card.z_index > best_z:
+				best_card = card
+				best_z = card.z_index
+	return best_card
+
+
+## Return the currently hovered card, or null.
+func _get_hovered_card() -> Card:
+	for card: Card in _get_card_children():
+		if card.state == CardTypes.CardState.HOVERED:
+			return card
 	return null
 
 
-func get_card_with_highest_z_index(cards: Array[Dictionary]) -> Node2D:
-	var highest_z_card: Node2D = cards[0].collider.get_parent()
-	var highest_z_index: int = highest_z_card.z_index
-	for i in range(1, cards.size()):
-		var current_card: Node2D = cards[i].collider.get_parent()
-		if current_card.z_index > highest_z_index:
-			highest_z_card = current_card
-			highest_z_index = current_card.z_index
-	return highest_z_card
+## Return the currently selected (dragged) card, or null.
+func _get_selected_card() -> Card:
+	for card: Card in _get_card_children():
+		if card.state == CardTypes.CardState.SELECTED:
+			return card
+	return null
 
 
-func connect_card_signals(card: Node2D) -> void:
+## Find a card's index within the filtered card array (not the raw child index).
+func _card_index(card: Card) -> int:
+	var cards: Array[Card] = _get_card_children()
+	return cards.find(card)
+
+
+func connect_card_signals(card: Card) -> void:
 	card.card_event.connect(_on_card_event)
 
 
-func _on_card_event(card: Node2D, event: CardTypes.CardEvent) -> void:
-	match event:
-		CardTypes.CardEvent.HOVER_ON:
-			if card_being_dragged:
-				return
-			current_hovered_card = card
-			hovered_index = card.get_index()
-			shake_card(card)
-			arrange_hand()
-		CardTypes.CardEvent.HOVER_OFF:
-			if card_being_dragged:
-				return
-			# Check if the cursor moved directly onto another card.
-			var new_hovered: Node2D = raycast_check_for_card()
-			if new_hovered:
-				current_hovered_card = new_hovered
-				hovered_index = new_hovered.get_index()
-			else:
-				current_hovered_card = null
-				hovered_index = -1
-			arrange_hand()
+func _on_card_event(_card: Card, _event: CardTypes.CardEvent) -> void:
+	# Hover is handled by _update_hover() via per-frame bounding-rect check.
+	# Area2D signals are unreliable when collision shapes move during tweens.
+	pass
 
 
-func shake_card(card: Node2D) -> void:
+func shake_card(card: Card) -> void:
 	# Shake the sprite child instead of the card node to avoid conflicting
 	# with arrange_hand()'s position tween on the card itself.
-	var sprite: Node2D = card.card_image
+	var sprite: Sprite2D = card.card_image
 	var origin: Vector2 = sprite.position
 	var tween: Tween = sprite.create_tween()
 	tween.tween_property(sprite, "position", origin + Vector2(SHAKE_INTENSITY, 0), SHAKE_DURATION)
@@ -331,11 +640,55 @@ func shake_card(card: Node2D) -> void:
 # Hand Operations
 # =============================================================================
 
-func draw_card() -> void:
-	# TODO: Instantiate card from deck, add_child(), call arrange_hand()
-	pass
+## How many cards are currently in the hand.
+func hand_size() -> int:
+	return _get_card_children().size()
 
 
-func play_card(_card: Node2D) -> void:
-	# TODO: Remove card from hand, trigger play logic, call arrange_hand()
-	pass
+## Draw multiple cards from the deck into the hand.
+func draw_cards(count: int) -> void:
+	for i: int in range(count):
+		var data: CardData = deck.draw()
+		if data == null:
+			break
+		var card: Card = _instance_card(data)
+		add_child(card)
+	arrange_hand()
+
+
+## Instantiate the correct card scene for this card type and populate it.
+func _instance_card(data: CardData) -> Card:
+	var scene: PackedScene = _card_scenes.get(data.card_type, _card_scenes[CardTypes.CardType.CREATURE])
+	var card: Card = scene.instantiate()
+	# setup() must run after _ready() so the node is in the tree.
+	# call_deferred ensures _ready() fires first.
+	card.call_deferred("setup", data)
+	return card
+
+
+## Play a card — transition to PLAYED, emit signal, discard its data, remove node.
+## Use _finalize_play() instead when going through the play card flow.
+func play_card(card: Card) -> void:
+	card.set_state(CardTypes.CardState.PLAYED)
+	if card.card_data:
+		deck.add_to_discard(card.card_data)
+		card_played.emit(card.card_data)
+	card.queue_free()
+	arrange_hand()
+
+
+## Discard a card from hand without playing it (forced discard, discard cost, etc.).
+func discard_card(card: Card) -> void:
+	if card.card_data:
+		deck.add_to_discard(card.card_data)
+		card_discarded.emit(card.card_data)
+	card.queue_free()
+	arrange_hand()
+
+
+## Return a card from hand back into the draw pile and shuffle it in.
+func return_to_deck(card: Card) -> void:
+	if card.card_data:
+		deck.insert_at_random(card.card_data)
+	card.queue_free()
+	arrange_hand()

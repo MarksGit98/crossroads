@@ -5,6 +5,8 @@ extends Node2D
 @onready var hex_grid: HexGrid = $HexGrid
 @onready var info_label: Label = $CanvasLayer/InfoLabel
 @onready var camera: Camera2D = $Camera2D
+@onready var player: Player = $Player
+@onready var hand: Node2D = $HandLayer/Hand
 
 
 func _ready() -> void:
@@ -18,6 +20,12 @@ func _ready() -> void:
 	hex_grid.hex_clicked.connect(_on_hex_clicked)
 	hex_grid.hex_hovered.connect(_on_hex_hovered)
 
+	# Give the Hand a reference to the hex grid for targeting mode.
+	hand.board = hex_grid
+
+	# Start the first turn so mana initializes.
+	player.start_turn()
+
 	info_label.text = "Click a hex to inspect it"
 
 
@@ -26,7 +34,9 @@ func _center_camera() -> void:
 	var center_col: float = (hex_grid.grid_cols - 1) / 2.0
 	var center_row: float = (hex_grid.grid_rows - 1) / 2.0
 	var center_coord: Vector2i = Vector2i(roundi(center_col), roundi(center_row))
-	camera.position = HexHelper.hex_to_world(center_coord, hex_grid.hex_size)
+	var grid_center: Vector2 = HexHelper.hex_to_world(center_coord, hex_grid.hex_size)
+	# Shift camera upward so the grid sits above the hand area at the bottom.
+	camera.position = grid_center + Vector2(0, 120)
 
 
 func _on_hex_clicked(coord: Vector2i) -> void:

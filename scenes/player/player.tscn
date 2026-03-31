@@ -1,0 +1,11 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/player/player.gd" id="1_player"]
+[ext_resource type="PackedScene" uid="uid://covrj71imfp5r" path="res://scenes/ui/mana_display.tscn" id="2_mana"]
+
+[node name="Player" type="Node"]
+script = ExtResource("1_player")
+
+[node name="ManaCanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="ManaDisplay" parent="ManaCanvasLayer" instance=ExtResource("2_mana")]

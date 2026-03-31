@@ -1,0 +1,39 @@
+[gd_scene format=3 uid="uid://c6dgdwa17den4"]
+
+[ext_resource type="Script" uid="uid://lmfwocnyc8l6" path="res://scripts/cards/deck.gd" id="1_deck"]
+[ext_resource type="Texture2D" uid="uid://00w80ub17d82" path="res://sample images/example deck.png" id="2_sprite"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_count"]
+font_size = 40
+outline_size = 6
+outline_color = Color(0, 0, 0, 1)
+shadow_size = 4
+shadow_color = Color(0, 0, 0, 0.7)
+shadow_offset = Vector2(2, 2)
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_click"]
+radius = 44.011364
+
+[node name="Deck" type="Node2D" unique_id=2133631085]
+position = Vector2(1860, 1010)
+script = ExtResource("1_deck")
+
+[node name="DeckSprite" type="Sprite2D" parent="." unique_id=530224159]
+scale = Vector2(0.1, 0.1)
+texture = ExtResource("2_sprite")
+
+[node name="DeckCountLabel" type="Label" parent="." unique_id=695799796]
+offset_left = -29.0
+offset_top = -39.0
+offset_right = 32.0
+offset_bottom = 16.0
+text = "0"
+label_settings = SubResource("LabelSettings_count")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ClickArea" type="Area2D" parent="." unique_id=1275835653]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="ClickArea" unique_id=1935402116]
+position = Vector2(2, -2)
+shape = SubResource("CircleShape2D_click")

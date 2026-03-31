@@ -1,16 +1,29 @@
 [gd_scene format=3 uid="uid://df7cf58fwx8f8"]
 
-[ext_resource type="Script" uid="uid://co7n8j0lv5ej6" path="res://scripts/duel/duel_test_scene.gd" id="1"]
+[ext_resource type="PackedScene" uid="uid://beb4c3h4kuufp" path="res://scenes/hand/hand.tscn" id="1_naw1e"]
 [ext_resource type="Script" uid="uid://bukrmffv46rys" path="res://scripts/hex/hex_grid.gd" id="2"]
+[ext_resource type="PackedScene" path="res://scenes/deck/deck.tscn" id="3_deck"]
+[ext_resource type="Script" uid="uid://co7n8j0lv5ej6" path="res://scripts/duel/duel_test_scene.gd" id="4_duel"]
+[ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="5_player"]
 
 [node name="DuelTestScene" type="Node2D" unique_id=2109111912]
-script = ExtResource("1")
+script = ExtResource("4_duel")
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=1024401811]
 zoom = Vector2(1.2, 1.2)
 
 [node name="HexGrid" type="Node2D" parent="." unique_id=939498802]
 script = ExtResource("2")
+
+[node name="Player" parent="." instance=ExtResource("5_player")]
+
+[node name="DeckLayer" type="CanvasLayer" parent="." unique_id=1739431337]
+
+[node name="Deck" parent="DeckLayer" unique_id=1739431338 instance=ExtResource("3_deck")]
+
+[node name="HandLayer" type="CanvasLayer" parent="." unique_id=794453200]
+
+[node name="Hand" parent="HandLayer" unique_id=402672956 instance=ExtResource("1_naw1e")]
 
 [node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=552460697]
 

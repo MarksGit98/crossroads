@@ -1,0 +1,108 @@
+[gd_scene format=3 uid="uid://dcebpeljik31r"]
+
+[ext_resource type="Texture2D" uid="uid://1jv4cvfb4ijy" path="res://sample images/Viking-Creature-Card-Example.png" id="1_tex"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_name"]
+font_size = 100
+outline_size = 30
+outline_color = Color(0, 0, 0, 1)
+shadow_size = 5
+shadow_color = Color(0, 0, 0, 0.85)
+shadow_offset = Vector2(8, 8)
+
+[sub_resource type="LabelSettings" id="LabelSettings_cost"]
+font_size = 200
+font_color = Color(0.9987819, 0.9987819, 0.9987819, 1)
+outline_size = 22
+outline_color = Color(0, 0, 0, 1)
+shadow_size = 22
+shadow_color = Color(0, 0, 0, 0.9)
+shadow_offset = Vector2(12, 12)
+
+[sub_resource type="LabelSettings" id="LabelSettings_stats"]
+font_size = 120
+shadow_size = 12
+shadow_color = Color(0, 0, 0, 0.9)
+shadow_offset = Vector2(10, 10)
+
+[sub_resource type="LabelSettings" id="LabelSettings_desc"]
+font_size = 58
+font_color = Color(0, 0, 0, 1)
+shadow_size = 0
+shadow_color = Color(0, 0, 0, 0.8)
+shadow_offset = Vector2(2, 2)
+
+[node name="CardFaceLayout" type="Control" unique_id=2059791554]
+custom_minimum_size = Vector2(1342, 1846)
+layout_mode = 3
+anchors_preset = 0
+offset_right = 1342.0
+offset_bottom = 1846.0
+
+[node name="CardBackground" type="TextureRect" parent="." unique_id=629235502]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = ExtResource("1_tex")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="NameLabel" type="Label" parent="." unique_id=65849682]
+layout_mode = 0
+offset_left = 123.0
+offset_top = 1078.0
+offset_right = 1212.0
+offset_bottom = 1224.0
+theme_override_font_sizes/font_size = 24
+text = "Card Name"
+label_settings = SubResource("LabelSettings_name")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="CostLabel" type="Label" parent="." unique_id=285177022]
+layout_mode = 0
+offset_left = 66.0
+offset_top = 18.0
+offset_right = 242.0
+offset_bottom = 291.0
+text = "0"
+label_settings = SubResource("LabelSettings_cost")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="AtkLabel" type="Label" parent="." unique_id=855955090]
+layout_mode = 0
+offset_left = 66.0
+offset_top = 1631.0
+offset_right = 207.0
+offset_bottom = 1796.0
+text = "0"
+label_settings = SubResource("LabelSettings_stats")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="HpLabel" type="Label" parent="." unique_id=1131832203]
+layout_mode = 0
+offset_left = 1132.0
+offset_top = 1632.0
+offset_right = 1290.0
+offset_bottom = 1797.0
+text = "0"
+label_settings = SubResource("LabelSettings_stats")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="DescriptionLabel" type="Label" parent="." unique_id=1980980735]
+layout_mode = 0
+offset_left = 139.0
+offset_top = 1262.0
+offset_right = 1203.0
+offset_bottom = 1631.0
+text = "Description text goes here"
+label_settings = SubResource("LabelSettings_desc")
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2

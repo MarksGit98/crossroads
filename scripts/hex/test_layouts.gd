@@ -16,27 +16,20 @@ const FG: int = TerrainTypes.Terrain.FROZEN_GROUND
 const IW: int = TerrainTypes.Terrain.ICE_WALL
 
 
-## Standard 7x9 Tundra duel board.
-## Row 0-2: Enemy territory (top)
-## Row 3-4: Contested zone with river
-## Row 5-8: Player territory (bottom)
+## Standard 9x7 Tundra duel board (horizontal layout).
+## Col 0-2: Enemy territory (left)
+## Col 3-5: Contested zone with river
+## Col 6-8: Player territory (right)
 static func tundra_standard() -> Array:
 	return [
-		# === Enemy Territory ===
-		#  col0  col1  col2  col3  col4  col5  col6
-		[  G,    G,    G,    G,    G,    G,    G  ],  # Row 0: enemy back line
-		[  G,    FG,   G,    G,    G,    FG,   G  ],  # Row 1: frozen ground flanks
-		[  G,    G,    F,    G,    F,    G,    G  ],  # Row 2: forest screens
-
-		# === Contested Zone ===
-		[  G,    G,    G,    RU,   G,    G,    G  ],  # Row 3: ruins for cover mid
-		[  M,    R,    R,    B,    R,    R,    M  ],  # Row 4: river + bridge center, mountains block edges
-
-		# === Player Territory ===
-		[  G,    G,    G,    RU,   G,    G,    G  ],  # Row 5: ruins mirror
-		[  G,    G,    F,    G,    F,    G,    G  ],  # Row 6: forest screens mirror
-		[  G,    FG,   G,    G,    G,    FG,   G  ],  # Row 7: frozen ground flanks mirror
-		[  G,    G,    G,    G,    G,    G,    G  ],  # Row 8: player back line
+		#  col0  col1  col2  col3  col4  col5  col6  col7  col8
+		[  G,    G,    G,    G,    M,    G,    G,    G,    G  ],  # Row 0
+		[  G,    FG,   G,    G,    R,    G,    G,    FG,   G  ],  # Row 1
+		[  G,    G,    F,    G,    R,    G,    F,    G,    G  ],  # Row 2
+		[  G,    G,    G,    RU,   B,    RU,   G,    G,    G  ],  # Row 3: center — ruins + bridge
+		[  G,    G,    F,    G,    R,    G,    F,    G,    G  ],  # Row 4
+		[  G,    FG,   G,    G,    R,    G,    G,    FG,   G  ],  # Row 5
+		[  G,    G,    G,    G,    M,    G,    G,    G,    G  ],  # Row 6
 	]
 
 
@@ -54,13 +47,11 @@ static func tiny_test() -> Array:
 ## Open field — no terrain obstacles. For testing movement and combat.
 static func open_field() -> Array:
 	return [
-		[  G,  G,  G,  G,  G,  G,  G  ],
-		[  G,  G,  G,  G,  G,  G,  G  ],
-		[  G,  G,  G,  G,  G,  G,  G  ],
-		[  G,  G,  G,  G,  G,  G,  G  ],
-		[  G,  G,  G,  G,  G,  G,  G  ],
-		[  G,  G,  G,  G,  G,  G,  G  ],
-		[  G,  G,  G,  G,  G,  G,  G  ],
-		[  G,  G,  G,  G,  G,  G,  G  ],
-		[  G,  G,  G,  G,  G,  G,  G  ],
+		[  G,  G,  G,  G,  G,  G,  G,  G,  G  ],
+		[  G,  G,  G,  G,  G,  G,  G,  G,  G  ],
+		[  G,  G,  G,  G,  G,  G,  G,  G,  G  ],
+		[  G,  G,  G,  G,  G,  G,  G,  G,  G  ],
+		[  G,  G,  G,  G,  G,  G,  G,  G,  G  ],
+		[  G,  G,  G,  G,  G,  G,  G,  G,  G  ],
+		[  G,  G,  G,  G,  G,  G,  G,  G,  G  ],
 	]
