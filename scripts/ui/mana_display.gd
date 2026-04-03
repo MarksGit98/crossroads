@@ -10,10 +10,22 @@ var player: Player = null
 @onready var mana_label: Label = $ManaLabel
 
 
+## Margin from the bottom-left corner of the viewport.
+const MARGIN_LEFT: float = 60.0
+const MARGIN_BOTTOM: float = 70.0
+
+
 func _ready() -> void:
-	# Try to find the Player node in the scene tree.
-	# The DuelTestScene wires this in _ready() via set_player().
+	# Anchor to bottom-left corner regardless of viewport size.
+	_anchor_to_corner()
+	get_viewport().size_changed.connect(_anchor_to_corner)
 	_update_label(0, 0)
+
+
+## Position at bottom-left corner of the viewport.
+func _anchor_to_corner() -> void:
+	var screen: Vector2 = get_viewport_rect().size
+	position = Vector2(MARGIN_LEFT, screen.y - MARGIN_BOTTOM)
 
 
 ## Connect to a Player node and listen for mana changes.

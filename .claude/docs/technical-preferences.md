@@ -32,10 +32,16 @@
 - **Minimum Coverage**: [TO BE CONFIGURED]
 - **Required Tests**: Balance formulas, gameplay systems, hex math, pathfinding, LOS, guard cone
 
+## UI & Layout Rules
+
+- **No hardcoded pixel positions.** All UI elements must be placed relative to the viewport (e.g., anchored to corners, centered via `get_viewport_rect().size`, or using Control node anchors/margins). This ensures the game scales correctly across any window size.
+- Screen-space elements (Hand, Deck, ManaDisplay, etc.) must listen to `get_viewport().size_changed` and reposition dynamically when the window is resized.
+- Use constants for margins/offsets from viewport edges (e.g., `MARGIN_LEFT`, `MARGIN_BOTTOM`) rather than absolute pixel coordinates.
+
 ## Forbidden Patterns
 
 <!-- Add patterns that should never appear in this project's codebase -->
-- [None configured yet — add as architectural decisions are made]
+- **Hardcoded pixel positions for UI elements** — use viewport-relative positioning instead (see UI & Layout Rules above)
 
 ## Allowed Libraries / Addons
 

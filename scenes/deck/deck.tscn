@@ -15,7 +15,6 @@ shadow_offset = Vector2(2, 2)
 radius = 44.011364
 
 [node name="Deck" type="Node2D" unique_id=2133631085]
-position = Vector2(1860, 1010)
 script = ExtResource("1_deck")
 
 [node name="DeckSprite" type="Sprite2D" parent="." unique_id=530224159]

@@ -3,8 +3,8 @@
 class_name CreatureCard
 extends Card
 
-## Preload the creature scene for spawning on the board.
-var _creature_scene: PackedScene = preload("res://scenes/creatures/creature.tscn")
+## Fallback creature scene when CardData has no creature_scene_path.
+var _default_creature_scene: PackedScene = preload("res://scenes/creatures/creature.tscn")
 
 # =============================================================================
 # Board State (populated when placed on the hex grid)
@@ -130,10 +130,27 @@ func _compute_valid_summoning_hexes(board: HexGrid) -> Array[Vector2i]:
 
 
 ## Spawn a Creature board entity on the given hex.
+## Uses the creature_scene_path from CardData if set, otherwise falls back to the base scene.
+## Adds the creature to board.creature_parent (or the board itself as fallback).
 func _spawn_creature(board: HexGrid, hex: Vector2i) -> void:
-	var creature: Creature = _creature_scene.instantiate()
-	board.add_child(creature)
+	var scene: PackedScene
+	if card_data.creature_scene_path != "":
+		scene = load(card_data.creature_scene_path) as PackedScene
+	else:
+		scene = _default_creature_scene
+	var creature: Creature = scene.instantiate()
+
+	# Add to the dedicated Creatures node if available, otherwise to the board.
+	var parent: Node2D = board.creature_parent if board.creature_parent else board
+	parent.add_child(creature)
+
+	# Initialize stats, position, z-order, and start idle animation.
+	# DEPTH_OFFSET and z_index are set inside initialize().
 	creature.initialize(card_data, hex, board.hex_size)
+
+	# Play summon effect animation if available.
+	if creature.anim_player and creature.anim_player.has_animation(&"summon"):
+		creature.anim_player.play(&"summon")
 
 	# Register the creature as the tile's occupant.
 	var tile: HexTileData = board.get_tile(hex)

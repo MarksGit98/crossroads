@@ -16,20 +16,22 @@ const FG: int = TerrainTypes.Terrain.FROZEN_GROUND
 const IW: int = TerrainTypes.Terrain.ICE_WALL
 
 
-## Standard 9x7 Tundra duel board (horizontal layout).
-## Col 0-2: Enemy territory (left)
-## Col 3-5: Contested zone with river
-## Col 6-8: Player territory (right)
+## Standard 15x7 Tundra duel board (horizontal layout).
+## Col 0-2:   Player territory (left, spawn zone on col 0)
+## Col 3-4:   Player approach
+## Col 5-9:   Contested zone with river
+## Col 10-11: Enemy approach
+## Col 12-14: Enemy territory (right)
 static func tundra_standard() -> Array:
 	return [
-		#  col0  col1  col2  col3  col4  col5  col6  col7  col8
-		[  G,    G,    G,    G,    M,    G,    G,    G,    G  ],  # Row 0
-		[  G,    FG,   G,    G,    R,    G,    G,    FG,   G  ],  # Row 1
-		[  G,    G,    F,    G,    R,    G,    F,    G,    G  ],  # Row 2
-		[  G,    G,    G,    RU,   B,    RU,   G,    G,    G  ],  # Row 3: center — ruins + bridge
-		[  G,    G,    F,    G,    R,    G,    F,    G,    G  ],  # Row 4
-		[  G,    FG,   G,    G,    R,    G,    G,    FG,   G  ],  # Row 5
-		[  G,    G,    G,    G,    M,    G,    G,    G,    G  ],  # Row 6
+		#  col0  col1  col2  col3  col4  col5  col6  col7  col8  col9  col10 col11 col12 col13 col14
+		[  G,    G,    G,    G,    FG,   G,    G,    M,    G,    G,    FG,   G,    G,    G,    G  ],  # Row 0
+		[  G,    G,    FG,   G,    G,    G,    G,    R,    G,    G,    G,    G,    FG,   G,    G  ],  # Row 1
+		[  G,    G,    G,    F,    G,    G,    G,    R,    G,    G,    G,    F,    G,    G,    G  ],  # Row 2
+		[  G,    G,    G,    G,    RU,   G,    RU,   B,    RU,   G,    RU,   G,    G,    G,    G  ],  # Row 3: center
+		[  G,    G,    G,    F,    G,    G,    G,    R,    G,    G,    G,    F,    G,    G,    G  ],  # Row 4
+		[  G,    G,    FG,   G,    G,    G,    G,    R,    G,    G,    G,    G,    FG,   G,    G  ],  # Row 5
+		[  G,    G,    G,    G,    FG,   G,    G,    M,    G,    G,    FG,   G,    G,    G,    G  ],  # Row 6
 	]
 
 
@@ -47,11 +49,11 @@ static func tiny_test() -> Array:
 ## Open field — no terrain obstacles. For testing movement and combat.
 static func open_field() -> Array:
 	return [
-		[  G,  G,  G,  G,  G,  G,  G,  G,  G  ],
-		[  G,  G,  G,  G,  G,  G,  G,  G,  G  ],
-		[  G,  G,  G,  G,  G,  G,  G,  G,  G  ],
-		[  G,  G,  G,  G,  G,  G,  G,  G,  G  ],
-		[  G,  G,  G,  G,  G,  G,  G,  G,  G  ],
-		[  G,  G,  G,  G,  G,  G,  G,  G,  G  ],
-		[  G,  G,  G,  G,  G,  G,  G,  G,  G  ],
+		[  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G  ],
+		[  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G  ],
+		[  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G  ],
+		[  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G  ],
+		[  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G  ],
+		[  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G  ],
+		[  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G,  G  ],
 	]

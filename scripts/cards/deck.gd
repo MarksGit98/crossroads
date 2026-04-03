@@ -7,6 +7,7 @@ extends Node2D
 signal card_drawn(card_data: CardData)
 signal deck_shuffled
 signal deck_empty
+signal deck_ready
 
 var draw_pile: Array[CardData] = []
 var discard_pile: Array[CardData] = []
@@ -17,24 +18,32 @@ var _viewer_open: bool = false
 ## The viewer panel instance (created on first open, reused after).
 var _viewer: Control = null
 
+## Margin from the bottom-right corner of the viewport.
+const MARGIN_RIGHT: float = 60.0
+const MARGIN_BOTTOM: float = 70.0
+
 ## Label showing remaining card count. Wired via @onready.
 @onready var count_label: Label = $DeckCountLabel
 @onready var click_area: Area2D = $ClickArea
 
 ## Example card IDs used for testing.
 const EXAMPLE_DECK: Array[String] = [
-	"viking_valkyrie",
-	"viking_shieldmaiden",
-	"viking_berserker",
-	"viking_frost_archer",
-	"viking_war_horn",
-	"viking_ragnaroks_echo",
-	"viking_rune_trap",
-	"viking_wolfskin_cloak",
+	"viking_archer",
+	"viking_armored_axeman",
+	"viking_knight",
+	"viking_knight_templar",
+	"viking_lancer",
+	"viking_soldier",
+	"viking_swordsman",
+	"viking_wizard",
 ]
 
 
 func _ready() -> void:
+	# Anchor to bottom-right corner regardless of viewport size.
+	_anchor_to_corner()
+	get_viewport().size_changed.connect(_anchor_to_corner)
+
 	build(EXAMPLE_DECK)
 	shuffle()
 	_update_count_label()
@@ -44,6 +53,14 @@ func _ready() -> void:
 	deck_empty.connect(_on_pile_changed)
 	# Wire click detection.
 	click_area.input_event.connect(_on_click_area_input)
+	# Signal that the deck is built and ready to be drawn from.
+	deck_ready.emit()
+
+
+## Position at bottom-right corner of the viewport.
+func _anchor_to_corner() -> void:
+	var screen: Vector2 = get_viewport_rect().size
+	position = Vector2(screen.x - MARGIN_RIGHT, screen.y - MARGIN_BOTTOM)
 
 
 func _on_pile_changed(_arg: Variant = null) -> void:

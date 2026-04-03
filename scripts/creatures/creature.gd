@@ -17,10 +17,17 @@ signal status_applied(creature: Creature, effect: CardTypes.StatusEffect)
 signal status_removed(creature: Creature, effect: CardTypes.StatusEffect)
 signal active_used(creature: Creature, ability_index: int)
 signal passive_triggered(creature: Creature, passive_index: int)
+signal clicked(creature: Creature)
+signal hovered(creature: Creature)
+signal unhovered(creature: Creature)
 
 # =============================================================================
 # Identity (set once on spawn from CardData)
 # =============================================================================
+
+## Scale multiplier applied on top of hex-fitted base scale.
+## Tune per-creature in sub-scenes if some creatures should appear larger/smaller.
+@export var sprite_scale_factor: float = 2.5
 
 ## The card data this creature was summoned from.
 var card_data: CardData
@@ -76,6 +83,12 @@ var _active_cooldowns: Dictionary = {}
 ## Animation player for property animations (flash on hit, scale bounce, fade).
 @onready var anim_player: AnimationPlayer = $AnimationPlayer
 
+## Composition-based state machine for board behavior (IDLE, WALKING, ATTACKING, etc.).
+@onready var state_machine: CreatureStateMachine = $CreatureStateMachine
+
+## Click/hover detection area for player interaction.
+@onready var click_area: Area2D = $ClickArea
+
 
 # =============================================================================
 # Initialization
@@ -101,16 +114,96 @@ func initialize(data: CardData, hex: Vector2i, hex_size: float) -> void:
 	for i: int in range(data.actives.size()):
 		_active_cooldowns[i] = 0
 
-	# Position on the grid.
+	# Position on the grid. Add DEPTH_OFFSET to match 2.5D tile positioning.
 	hex_position = hex
-	position = HexHelper.hex_to_world(hex, hex_size)
+	position = HexHelper.hex_to_world(hex, hex_size) + Vector2(0, HexTileRenderer.DEPTH_OFFSET)
 
-	# Play idle animation if it exists.
-	if animated_sprite.sprite_frames and animated_sprite.sprite_frames.has_animation(&"idle"):
-		animated_sprite.play(&"idle")
+	# Z-order: creatures render above ground tiles at the same row.
+	z_index = hex.y * 2 + 1
+
+	# Scale the creature to fit the hex based on sprite frame size.
+	_apply_creature_scale(hex_size)
+
+	# Initialize the state machine with the AnimatedSprite2D reference.
+	if state_machine:
+		state_machine.setup(animated_sprite)
+		state_machine.attack_hit.connect(_on_attack_hit)
+	else:
+		# Fallback if state machine node isn't present.
+		if animated_sprite.sprite_frames and animated_sprite.sprite_frames.has_animation(&"idle"):
+			animated_sprite.play(&"idle")
 
 	# Fire ON_SUMMON passives.
 	check_passive_triggers(CardTypes.TriggerType.ON_SUMMON, {"creature": self})
+
+	# Wire up click/hover detection.
+	_connect_click_area()
+
+
+## Connect click area signals for player interaction.
+func _connect_click_area() -> void:
+	if not click_area:
+		return
+	click_area.input_event.connect(_on_click_area_input_event)
+	click_area.mouse_entered.connect(_on_click_area_mouse_entered)
+	click_area.mouse_exited.connect(_on_click_area_mouse_exited)
+
+
+# =============================================================================
+# Input Detection
+# =============================================================================
+
+## Handle mouse clicks on the creature's click area.
+func _on_click_area_input_event(_viewport: Node, event: InputEvent, _shape_idx: int) -> void:
+	
+	if event is InputEventMouseButton:
+		var mb: InputEventMouseButton = event as InputEventMouseButton
+		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
+			print("CLICK")
+			clicked.emit(self)
+			# Consume the input so the hex grid doesn't also process the click.
+			get_viewport().set_input_as_handled()
+
+
+## Handle mouse entering the creature's click area.
+func _on_click_area_mouse_entered() -> void:
+	hovered.emit(self)
+
+
+## Handle mouse leaving the creature's click area.
+func _on_click_area_mouse_exited() -> void:
+	unhovered.emit(self)
+
+
+# =============================================================================
+# Scaling
+# =============================================================================
+
+## Scale the creature node to fit the hex grid based on sprite frame dimensions.
+## Uses hex_size to compute a base scale, then multiplies by sprite_scale_factor.
+func _apply_creature_scale(hex_size: float) -> void:
+	var frame_width: float = _get_frame_width()
+	if frame_width <= 0.0:
+		# No frame data — apply scale factor directly.
+		scale = Vector2(sprite_scale_factor, sprite_scale_factor)
+		return
+	var hex_diameter: float = hex_size * 2.0
+	var base_scale: float = hex_diameter / frame_width
+	var final_scale: float = base_scale * sprite_scale_factor
+	scale = Vector2(final_scale, final_scale)
+
+
+## Read the width of the first idle animation frame to determine sprite size.
+func _get_frame_width() -> float:
+	if not animated_sprite or not animated_sprite.sprite_frames:
+		return 0.0
+	if animated_sprite.sprite_frames.has_animation(&"idle"):
+		var frame_count: int = animated_sprite.sprite_frames.get_frame_count(&"idle")
+		if frame_count > 0:
+			var texture: Texture2D = animated_sprite.sprite_frames.get_frame_texture(&"idle", 0)
+			if texture:
+				return texture.get_width()
+	return 0.0
 
 
 ## Called at the start of the owning player's turn.
@@ -195,8 +288,10 @@ func use_active(ability_index: int, context: Dictionary) -> void:
 	has_used_active = true
 	active_used.emit(self, ability_index)
 
-	# Play attack animation if available.
-	if animated_sprite.sprite_frames and animated_sprite.sprite_frames.has_animation(&"attack"):
+	# Play attack animation via state machine.
+	if state_machine:
+		state_machine.play_attack()
+	elif animated_sprite.sprite_frames and animated_sprite.sprite_frames.has_animation(&"attack"):
 		animated_sprite.play(&"attack")
 
 
@@ -411,8 +506,10 @@ func take_damage(amount: int, damage_type: CardTypes.DamageType = CardTypes.Dama
 		"creature": self, "damage": reduced, "damage_type": damage_type,
 	})
 
-	# Play hurt animation if available.
-	if animated_sprite.sprite_frames and animated_sprite.sprite_frames.has_animation(&"hurt"):
+	# Play hurt animation via state machine.
+	if state_machine and current_hp > 0:
+		state_machine.play_hurt()
+	elif animated_sprite.sprite_frames and animated_sprite.sprite_frames.has_animation(&"hurt"):
 		animated_sprite.play(&"hurt")
 
 	if current_hp <= 0:
@@ -446,14 +543,38 @@ func modify_armor(delta: int) -> void:
 # Movement
 # =============================================================================
 
-## Move this creature to a new hex. Updates position and signals.
+## Move this creature to a new hex with walk animation and tween.
+## The creature plays the walk animation, tweens to the destination,
+## then returns to idle.
 func move_to(new_hex: Vector2i, hex_size: float) -> void:
 	var old_hex: Vector2i = hex_position
 	hex_position = new_hex
-	position = HexHelper.hex_to_world(new_hex, hex_size)
 	has_moved = true
-	moved.emit(self, old_hex, new_hex)
 
+	var target_pos: Vector2 = HexHelper.hex_to_world(new_hex, hex_size) + Vector2(0, HexTileRenderer.DEPTH_OFFSET)
+
+	# Flip sprite to face movement direction.
+	var direction: Vector2 = target_pos - position
+	if animated_sprite and direction.x != 0.0:
+		animated_sprite.flip_h = direction.x < 0.0
+
+	# Play walk animation via state machine.
+	if state_machine:
+		state_machine.play_walk()
+
+	# Tween to the target position.
+	var tween: Tween = create_tween().set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_CUBIC)
+	tween.tween_property(self, "position", target_pos, 0.4)
+	await tween.finished
+
+	# Stop walking, return to idle.
+	if state_machine:
+		state_machine.stop_walking()
+
+	# Update z-order for new row.
+	z_index = new_hex.y * 2 + 1
+
+	moved.emit(self, old_hex, new_hex)
 	check_passive_triggers(CardTypes.TriggerType.ON_MOVE, {
 		"creature": self, "from_hex": old_hex, "to_hex": new_hex,
 	})
@@ -536,6 +657,14 @@ func is_alive() -> bool:
 # Animation Helpers
 # =============================================================================
 
+## Called when the state machine's attack animation reaches the hit frame.
+## Override in subclasses for custom hit behavior (VFX, damage application, etc.).
+func _on_attack_hit() -> void:
+	# Base implementation — damage is applied by the combat system, not here.
+	# This hook exists for VFX/SFX timing.
+	pass
+
+
 ## Play a named animation if it exists in the sprite frames.
 func play_anim(anim_name: StringName) -> void:
 	if animated_sprite.sprite_frames and animated_sprite.sprite_frames.has_animation(anim_name):
@@ -556,9 +685,16 @@ func _on_death() -> void:
 	check_passive_triggers(CardTypes.TriggerType.ON_DEATH, {"creature": self})
 	died.emit(self)
 
-	# Play death animation if available, then queue_free.
-	if animated_sprite.sprite_frames and animated_sprite.sprite_frames.has_animation(&"death"):
+	# Play death animation via state machine, wait for DEAD state, then remove.
+	if state_machine:
+		state_machine.play_death()
+		# Wait for the death animation to finish (state machine emits animation_finished).
+		await state_machine.animation_finished
+		# Play fade-out effect if available.
+		play_effect_anim(&"fade_out")
+		if anim_player.has_animation(&"fade_out"):
+			await anim_player.animation_finished
+	elif animated_sprite.sprite_frames and animated_sprite.sprite_frames.has_animation(&"death"):
 		animated_sprite.play(&"death")
-		# Wait for the animation to finish before removing.
 		await animated_sprite.animation_finished
 	queue_free()

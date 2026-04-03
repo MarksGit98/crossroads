@@ -1,14 +1,10 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://dhmnojgcubeqc"]
 
-[ext_resource type="Script" path="res://scripts/creatures/creature.gd" id="1_creature"]
+[ext_resource type="Script" uid="uid://dfqr08upehbro" path="res://scripts/creatures/creature.gd" id="1_creature"]
+[ext_resource type="Script" uid="uid://8g20bm8ra6yn" path="res://scripts/creatures/creature_state_machine.gd" id="2_state_machine"]
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_default"]
 animations = [{
-"frames": [],
-"loop": true,
-"name": &"idle",
-"speed": 8.0
-}, {
 "frames": [],
 "loop": false,
 "name": &"attack",
@@ -16,54 +12,46 @@ animations = [{
 }, {
 "frames": [],
 "loop": false,
+"name": &"death",
+"speed": 8.0
+}, {
+"frames": [],
+"loop": false,
 "name": &"hurt",
 "speed": 12.0
 }, {
 "frames": [],
-"loop": false,
-"name": &"death",
+"loop": true,
+"name": &"idle",
 "speed": 8.0
 }]
 
-[sub_resource type="Animation" id="Animation_summon"]
-resource_name = "summon"
-length = 0.4
+[sub_resource type="Animation" id="Animation_RESET"]
+resource_name = "RESET"
+length = 0.01
 tracks/0/type = "value"
 tracks/0/imported = false
 tracks/0/enabled = true
 tracks/0/path = NodePath("AnimatedSprite2D:scale")
 tracks/0/interp = 1
-tracks/0/update_mode = 0
+tracks/0/loop_wrap = true
 tracks/0/keys = {
-"times": PackedFloat32Array(0, 0.15, 0.3, 0.4),
-"transitions": PackedFloat32Array(1, 1, 1, 1),
-"values": [Vector2(0, 0), Vector2(1.15, 1.15), Vector2(0.95, 0.95), Vector2(1, 1)]
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector2(1, 1)]
 }
 tracks/1/type = "value"
 tracks/1/imported = false
 tracks/1/enabled = true
 tracks/1/path = NodePath("AnimatedSprite2D:modulate")
 tracks/1/interp = 1
-tracks/1/update_mode = 0
+tracks/1/loop_wrap = true
 tracks/1/keys = {
-"times": PackedFloat32Array(0, 0.2, 0.4),
-"transitions": PackedFloat32Array(1, 1, 1),
-"values": [Color(1, 1, 1, 0), Color(1, 1, 1, 1), Color(1, 1, 1, 1)]
-}
-
-[sub_resource type="Animation" id="Animation_hit_flash"]
-resource_name = "hit_flash"
-length = 0.3
-tracks/0/type = "value"
-tracks/0/imported = false
-tracks/0/enabled = true
-tracks/0/path = NodePath("AnimatedSprite2D:modulate")
-tracks/0/interp = 1
-tracks/0/update_mode = 0
-tracks/0/keys = {
-"times": PackedFloat32Array(0, 0.05, 0.15, 0.3),
-"transitions": PackedFloat32Array(1, 1, 1, 1),
-"values": [Color(1, 1, 1, 1), Color(1, 0.3, 0.3, 1), Color(1, 1, 1, 1), Color(1, 1, 1, 1)]
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Color(1, 1, 1, 1)]
 }
 
 [sub_resource type="Animation" id="Animation_fade_out"]
@@ -74,37 +62,56 @@ tracks/0/imported = false
 tracks/0/enabled = true
 tracks/0/path = NodePath("AnimatedSprite2D:modulate")
 tracks/0/interp = 1
-tracks/0/update_mode = 0
+tracks/0/loop_wrap = true
 tracks/0/keys = {
 "times": PackedFloat32Array(0, 0.6),
 "transitions": PackedFloat32Array(1, 1),
+"update": 0,
 "values": [Color(1, 1, 1, 1), Color(1, 1, 1, 0)]
 }
 
-[sub_resource type="Animation" id="Animation_RESET"]
-resource_name = "RESET"
-length = 0.01
+[sub_resource type="Animation" id="Animation_hit_flash"]
+resource_name = "hit_flash"
+length = 0.3
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("AnimatedSprite2D:modulate")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.05, 0.15, 0.3),
+"transitions": PackedFloat32Array(1, 1, 1, 1),
+"update": 0,
+"values": [Color(1, 1, 1, 1), Color(1, 0.3, 0.3, 1), Color(1, 1, 1, 1), Color(1, 1, 1, 1)]
+}
+
+[sub_resource type="Animation" id="Animation_summon"]
+resource_name = "summon"
+length = 0.4
 tracks/0/type = "value"
 tracks/0/imported = false
 tracks/0/enabled = true
 tracks/0/path = NodePath("AnimatedSprite2D:scale")
 tracks/0/interp = 1
-tracks/0/update_mode = 0
+tracks/0/loop_wrap = true
 tracks/0/keys = {
-"times": PackedFloat32Array(0),
-"transitions": PackedFloat32Array(1),
-"values": [Vector2(1, 1)]
+"times": PackedFloat32Array(0, 0.15, 0.3, 0.4),
+"transitions": PackedFloat32Array(1, 1, 1, 1),
+"update": 0,
+"values": [Vector2(0, 0), Vector2(1.15, 1.15), Vector2(0.95, 0.95), Vector2(1, 1)]
 }
 tracks/1/type = "value"
 tracks/1/imported = false
 tracks/1/enabled = true
 tracks/1/path = NodePath("AnimatedSprite2D:modulate")
 tracks/1/interp = 1
-tracks/1/update_mode = 0
+tracks/1/loop_wrap = true
 tracks/1/keys = {
-"times": PackedFloat32Array(0),
-"transitions": PackedFloat32Array(1),
-"values": [Color(1, 1, 1, 1)]
+"times": PackedFloat32Array(0, 0.2, 0.4),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [Color(1, 1, 1, 0), Color(1, 1, 1, 1), Color(1, 1, 1, 1)]
 }
 
 [sub_resource type="AnimationLibrary" id="AnimationLibrary_main"]
@@ -115,13 +122,24 @@ _data = {
 &"summon": SubResource("Animation_summon")
 }
 
-[node name="Creature" type="Node2D"]
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_click"]
+size = Vector2(34, 30)
+
+[node name="Creature" type="Node2D" unique_id=810019056]
 script = ExtResource("1_creature")
 
-[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=48825108]
 sprite_frames = SubResource("SpriteFrames_default")
+animation = &"idle"
 
-[node name="AnimationPlayer" type="AnimationPlayer" parent="."]
-libraries = {
-&"": SubResource("AnimationLibrary_main")
-}
+[node name="AnimationPlayer" type="AnimationPlayer" parent="." unique_id=1498170570]
+libraries/ = SubResource("AnimationLibrary_main")
+
+[node name="CreatureStateMachine" type="Node" parent="." unique_id=933333786]
+script = ExtResource("2_state_machine")
+
+[node name="ClickArea" type="Area2D" parent="." unique_id=1358188028]
+monitorable = false
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="ClickArea" unique_id=469784076]
+shape = SubResource("RectangleShape2D_click")

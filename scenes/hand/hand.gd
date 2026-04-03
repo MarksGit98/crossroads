@@ -51,10 +51,11 @@ const SELECTED_CARD_Z_INDEX: int = 20
 const DRAG_OFFSET_LERP_SPEED: float = 0.0025
 const DRAG_FOLLOW_SPEED: float = 0.05
 const SHAKE_INTENSITY: float = 9.0
-const SHAKE_DURATION: float = 0.06
+const SHAKE_DURATION: float = 0.1
 
 ## Y coordinate (screen space) above which releasing a card attempts to play it.
-const PLAY_THRESHOLD_Y: float = 400.0
+## Computed in _ready(): half a card height above the hovered card's position.
+var play_threshold_y: float
 
 ## Color for highlighting valid target hexes during targeting mode.
 const TARGET_HIGHLIGHT_COLOR: Color = Color(0.2, 0.9, 0.3, 0.3)
@@ -102,6 +103,9 @@ var _selected_targets: Array[Vector2i] = []
 ## How many hexes the pending card needs (1 for most, >1 for multi-hex traps).
 var _required_target_count: int = 1
 
+## How long the preview fade-out takes on confirm (seconds).
+const PREVIEW_FADE_DURATION: float = 0.35
+
 ## Reference to the Deck node (Hand is inside a CanvasLayer, Deck is a sibling of that layer).
 @onready var deck: Deck = $"../../DeckLayer/Deck"
 
@@ -109,7 +113,16 @@ var _required_target_count: int = 1
 @onready var player: Player = $"../../Player"
 
 ## Reference to the HexGrid for targeting. Wired by DuelTestScene.
-var board: HexGrid = null
+## Uses a setter to keep _play_context in sync when assigned.
+var board: HexGrid = null:
+	set(value):
+		board = value
+		if _play_context:
+			_play_context["board"] = value
+
+## Persistent play context — built once when the board ref is set, reused every play.
+## Only "target_hexes" and "target_units" are updated per play.
+var _play_context: Dictionary = {}
 
 ## Preloaded card scenes by type for dynamic instantiation.
 var _card_scenes: Dictionary = {
@@ -132,7 +145,18 @@ func _ready() -> void:
 	# visible on hover in the hand. Divide CARD_HEIGHT by ~2 as the card origin
 	# point is in the center of the card.
 	hover_lift = -position.y + (screen_size.y - CARD_HEIGHT / 1.9)
-	draw_cards(6)
+	_init_play_context()
+	# Play threshold: half a card height above the hovered card's screen-space center.
+	# Hovered card screen Y = hand position.y + hover_lift (local offset).
+	# Releasing a card above this line triggers a play attempt.
+	var hovered_screen_y: float = position.y + hover_lift
+	play_threshold_y = hovered_screen_y - CARD_HEIGHT * 0.5
+	# Wait for the deck to signal it's ready before drawing the initial hand.
+	# This avoids timing issues where Hand._ready() fires before Deck._ready().
+	if deck.draw_pile.size() > 0:
+		draw_cards(6)
+	else:
+		deck.deck_ready.connect(_on_deck_ready, CONNECT_ONE_SHOT)
 
 
 ## Calculates card visual height from the card scene's sprite.
@@ -253,12 +277,27 @@ func _input(event: InputEvent) -> void:
 ##     cards 2 away get half that, etc. This creates a smooth "parting" effect
 ##     that follows the curve naturally.
 
-## Returns only Card children (excludes non-card nodes).
-func _get_card_children() -> Array[Card]:
+## Returns ALL Card children regardless of state. Used for queries.
+func _get_all_cards() -> Array[Card]:
 	var result: Array[Card] = []
 	for child: Node in get_children():
 		if child is Card:
 			result.append(child as Card)
+	return result
+
+
+## Returns only cards that participate in the hand fan layout.
+## Excludes PLAYED (queued for deletion), SELECTED (being dragged),
+## and PREVIEWING (shown at screen center during targeting).
+func _get_card_children() -> Array[Card]:
+	var result: Array[Card] = []
+	for child: Node in get_children():
+		if child is Card:
+			var card_state: CardTypes.CardState = (child as Card).state
+			if card_state != CardTypes.CardState.PLAYED \
+					and card_state != CardTypes.CardState.SELECTED \
+					and card_state != CardTypes.CardState.PREVIEWING:
+				result.append(child as Card)
 	return result
 
 
@@ -282,10 +321,6 @@ func arrange_hand() -> void:
 
 	for i in count:
 		var card: Card = cards[i]
-
-		# The selected (dragged) card is controlled by drag follow, skip it.
-		if card.state == CardTypes.CardState.SELECTED:
-			continue
 
 		# -- Card's base angle on the arc --
 		# t normalizes the card's index: 0.0 = leftmost, 1.0 = rightmost.
@@ -368,8 +403,9 @@ func _start_drag(card: Card) -> void:
 
 
 func _finish_drag(card: Card) -> void:
-	var mouse_y: float = get_viewport().get_mouse_position().y
-	if mouse_y < PLAY_THRESHOLD_Y:
+	# Check the card's actual screen position — more accurate than raw mouse
+	# because the card lerps toward the cursor and may lag slightly behind.
+	if card.global_position.y < play_threshold_y:
 		_try_play_card(card)
 	else:
 		# Return to hand — released below the play threshold.
@@ -386,35 +422,61 @@ func _finish_drag(card: Card) -> void:
 
 ## Attempt to play a card after it's been dragged above the play threshold.
 func _try_play_card(card: Card) -> void:
-	var context: Dictionary = _build_play_context(card)
-	if not card.can_play(context):
-		# Can't afford — shake and return to hand.
+	_set_play_targets()
+
+	# Pre-condition 1: Can the player afford this card?
+	if not card.can_play(_play_context):
 		card.set_state(CardTypes.CardState.IDLE)
-		shake_card(card)
 		arrange_hand()
+		shake_card(card, 10)
 		return
 
 	if card.needs_targeting():
-		_enter_targeting(card)
+		# Pre-condition 2: Are there any valid target hexes?
+		if board == null:
+			push_warning("Hand: cannot play targeting card — no board reference.")
+			card.set_state(CardTypes.CardState.IDLE)
+			arrange_hand()
+			shake_card(card, 10)
+			return
+
+		var targets: Array[Vector2i] = card.get_valid_targets(board)
+		if targets.is_empty():
+			# No valid hexes — reject with shake, don't enter targeting.
+			card.set_state(CardTypes.CardState.IDLE)
+			arrange_hand()
+			shake_card(card, 10)
+			return
+
+		_enter_targeting(card, targets)
 	else:
 		# No targeting needed — play immediately.
-		card.play(context)
+		card.play(_play_context)
 		_finalize_play(card)
 
 
-## Build the context dictionary for playing a card.
-func _build_play_context(card: Card, target_hexes: Array[Vector2i] = []) -> Dictionary:
-	return {
+## Build the persistent play context once. Called from _ready() and when board is set.
+## Static refs (player, board) live for the entire duel; per-play fields are stamped
+## via _set_play_targets() before each play call.
+func _init_play_context() -> void:
+	_play_context = {
 		"player": player,
 		"board": board,
-		"target_hexes": target_hexes,
+		"target_hexes": [],
 		"target_units": [],
 	}
 
 
+## Stamp per-play target data onto the cached context. Cheap — no allocation.
+func _set_play_targets(target_hexes: Array[Vector2i] = [], target_units: Array = []) -> void:
+	_play_context["target_hexes"] = target_hexes
+	_play_context["target_units"] = target_units
+
+
 ## Finalize playing a card: transition state, discard data, free the node.
 func _finalize_play(card: Card) -> void:
-	card.set_state(CardTypes.CardState.PLAYED)
+	if card.state != CardTypes.CardState.PLAYED:
+		card.set_state(CardTypes.CardState.PLAYED)
 	if card.card_data:
 		deck.add_to_discard(card.card_data)
 		card_played.emit(card.card_data)
@@ -426,17 +488,14 @@ func _finalize_play(card: Card) -> void:
 # Targeting Mode
 # =============================================================================
 
-## Enter targeting mode: highlight valid hexes, wait for player to click one.
-func _enter_targeting(card: Card) -> void:
-	if board == null:
-		push_warning("Hand: cannot enter targeting mode — no board reference.")
-		card.set_state(CardTypes.CardState.IDLE)
-		arrange_hand()
-		return
-
+## Enter targeting mode: show card at screen center in PREVIEWING state,
+## highlight valid hexes, wait for player to click a hex.
+## Targets are pre-computed by _try_play_card().
+func _enter_targeting(card: Card, targets: Array[Vector2i]) -> void:
 	_mode = HandMode.TARGETING
 	_pending_card = card
 	_selected_targets.clear()
+	_valid_targets = targets
 
 	# Determine how many targets are needed (multi-hex traps).
 	if card is TrapCard:
@@ -444,19 +503,14 @@ func _enter_targeting(card: Card) -> void:
 	else:
 		_required_target_count = 1
 
-	# Compute and highlight valid targets.
-	_valid_targets = card.get_valid_targets(board)
-
-	if _valid_targets.is_empty():
-		# No valid targets — cancel and return card to hand.
-		push_warning("Hand: no valid targets for '%s'." % card.card_data.card_name)
-		_cancel_targeting()
-		return
-
+	# Highlight valid hexes on the board.
 	_highlight_valid_targets()
 
-	# Dim the card in hand to show it's "committed" but not yet resolved.
-	card.set_state(CardTypes.CardState.DISABLED)
+	# Move the card to screen center in PREVIEWING state.
+	# This excludes it from the fan layout so remaining cards re-fan.
+	# The card must go SELECTED → IDLE first (valid transition), then IDLE → PREVIEWING.
+	card.set_state(CardTypes.CardState.IDLE)
+	_show_card_preview(card)
 	arrange_hand()
 
 	# Listen for hex clicks from the board.
@@ -464,7 +518,7 @@ func _enter_targeting(card: Card) -> void:
 		board.hex_clicked.connect(_on_target_hex_clicked)
 
 
-## Cancel targeting mode — return the card to hand, clear highlights.
+## Cancel targeting mode — return card to hand, clear highlights.
 func _cancel_targeting() -> void:
 	if board:
 		board.clear_highlights()
@@ -472,7 +526,8 @@ func _cancel_targeting() -> void:
 			board.hex_clicked.disconnect(_on_target_hex_clicked)
 
 	if _pending_card:
-		_pending_card.set_state(CardTypes.CardState.IDLE)
+		# Return card from PREVIEWING → IDLE (valid transition).
+		_hide_card_preview(_pending_card)
 
 	_mode = HandMode.NORMAL
 	_pending_card = null
@@ -491,6 +546,36 @@ func _highlight_valid_targets() -> void:
 	for coord: Vector2i in _selected_targets:
 		highlights[coord] = Color(0.1, 1.0, 0.4, 0.5)
 	board.set_highlights(highlights)
+
+
+## Move the card to screen center in PREVIEWING state.
+## The card stays as a child of Hand but is positioned via global_position
+## and excluded from the fan layout by _get_card_children().
+func _show_card_preview(card: Card) -> void:
+	card.set_state(CardTypes.CardState.PREVIEWING)
+	card.z_index = 100
+	card.scale = DEFAULT_CARD_SCALE
+	card.rotation = 0.0
+	# Position at screen center (upper-center so hex grid is visible below).
+	card.global_position = Vector2(screen_size.x * 0.5, screen_size.y * 0.35)
+	card.visible = true
+
+
+## Return the previewing card back to hand (used on cancel).
+func _hide_card_preview(card: Card) -> void:
+	if card == null:
+		return
+	card.set_state(CardTypes.CardState.IDLE)
+	card.z_index = IDLE_CARD_Z_INDEX
+
+
+## Fade out the previewing card (used on confirm), then finalize.
+func _fade_out_card_preview(card: Card) -> void:
+	if card == null:
+		return
+	var tween: Tween = card.create_tween()
+	tween.tween_property(card, "modulate:a", 0.0, PREVIEW_FADE_DURATION)
+	# Don't free here — _finalize_play() handles queue_free.
 
 
 ## Handle input during targeting mode.
@@ -532,10 +617,13 @@ func _on_target_hex_clicked(coord: Vector2i) -> void:
 	_confirm_targeting()
 
 
-## Confirm targeting: spend mana, play card with targets, clean up.
+## Confirm targeting: fade card preview, spend mana, spawn creature, clean up.
 func _confirm_targeting() -> void:
 	var card: Card = _pending_card
 	var targets: Array[Vector2i] = _selected_targets.duplicate()
+
+	# Fade out the card at screen center (cosmetic — doesn't block gameplay).
+	_fade_out_card_preview(card)
 
 	# Disconnect hex_clicked before playing to avoid re-entrancy.
 	if board and board.hex_clicked.is_connected(_on_target_hex_clicked):
@@ -550,12 +638,11 @@ func _confirm_targeting() -> void:
 	_selected_targets.clear()
 	_required_target_count = 1
 
-	# Re-enable the card so it can transition to PLAYED.
-	card.set_state(CardTypes.CardState.IDLE)
-
-	# Build context with selected targets and play.
-	var context: Dictionary = _build_play_context(card, targets)
-	card.play(context)
+	# Transition PREVIEWING → PLAYED, then stamp targets and execute.
+	# Mana is spent inside card.play() -> super.play().
+	card.set_state(CardTypes.CardState.PLAYED)
+	_set_play_targets(targets)
+	card.play(_play_context)
 	_finalize_play(card)
 
 
@@ -575,8 +662,6 @@ func _find_card_at_mouse() -> Card:
 	var half_w: float = CARD_WIDTH * 0.5
 	var half_h: float = CARD_HEIGHT * 0.5
 	for card: Card in _get_card_children():
-		if card.state == CardTypes.CardState.SELECTED:
-			continue
 		if card.state == CardTypes.CardState.DISABLED:
 			continue
 		# Scale the hit rect to match the card's current visual size.
@@ -593,7 +678,7 @@ func _find_card_at_mouse() -> Card:
 
 ## Return the currently hovered card, or null.
 func _get_hovered_card() -> Card:
-	for card: Card in _get_card_children():
+	for card: Card in _get_all_cards():
 		if card.state == CardTypes.CardState.HOVERED:
 			return card
 	return null
@@ -601,7 +686,7 @@ func _get_hovered_card() -> Card:
 
 ## Return the currently selected (dragged) card, or null.
 func _get_selected_card() -> Card:
-	for card: Card in _get_card_children():
+	for card: Card in _get_all_cards():
 		if card.state == CardTypes.CardState.SELECTED:
 			return card
 	return null
@@ -623,16 +708,19 @@ func _on_card_event(_card: Card, _event: CardTypes.CardEvent) -> void:
 	pass
 
 
-func shake_card(card: Card) -> void:
+## Shake the card sprite. intensity_scale multiplies the shake distance only —
+## timing stays the same so bigger shakes feel snappier, not sluggish.
+func shake_card(card: Card, intensity_scale: float = 1.0) -> void:
 	# Shake the sprite child instead of the card node to avoid conflicting
 	# with arrange_hand()'s position tween on the card itself.
 	var sprite: Sprite2D = card.card_image
 	var origin: Vector2 = sprite.position
+	var shake: float = SHAKE_INTENSITY * intensity_scale
 	var tween: Tween = sprite.create_tween()
-	tween.tween_property(sprite, "position", origin + Vector2(SHAKE_INTENSITY, 0), SHAKE_DURATION)
-	tween.tween_property(sprite, "position", origin + Vector2(-SHAKE_INTENSITY, 0), SHAKE_DURATION)
-	tween.tween_property(sprite, "position", origin + Vector2(SHAKE_INTENSITY * 0.6, 0), SHAKE_DURATION)
-	tween.tween_property(sprite, "position", origin + Vector2(-SHAKE_INTENSITY * 0.3, 0), SHAKE_DURATION * 0.7)
+	tween.tween_property(sprite, "position", origin + Vector2(shake, 0), SHAKE_DURATION)
+	tween.tween_property(sprite, "position", origin + Vector2(-shake, 0), SHAKE_DURATION)
+	tween.tween_property(sprite, "position", origin + Vector2(shake * 0.6, 0), SHAKE_DURATION)
+	tween.tween_property(sprite, "position", origin + Vector2(-shake * 0.3, 0), SHAKE_DURATION * 0.7)
 	tween.tween_property(sprite, "position", origin, SHAKE_DURATION * 0.7)
 
 
@@ -643,6 +731,16 @@ func shake_card(card: Card) -> void:
 ## How many cards are currently in the hand.
 func hand_size() -> int:
 	return _get_card_children().size()
+
+
+## Whether the hand is currently in targeting mode (waiting for hex selection).
+func is_targeting() -> bool:
+	return _mode == HandMode.TARGETING
+
+
+## Called when the deck signals it's built and ready to draw from.
+func _on_deck_ready() -> void:
+	draw_cards(6)
 
 
 ## Draw multiple cards from the deck into the hand.

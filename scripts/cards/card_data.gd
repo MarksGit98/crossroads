@@ -16,6 +16,9 @@ extends Resource
 @export var cost_value: int
 
 # --- Creature Stats (ignored for non-creatures) ---
+## Path to the creature's .tscn scene (e.g. "res://scenes/creatures/viking/soldier.tscn").
+## Used by CreatureCard._spawn_creature() to instantiate the correct creature.
+@export var creature_scene_path: String = ""
 @export var role: CardTypes.CreatureRole
 @export var atk: int
 @export var hp: int

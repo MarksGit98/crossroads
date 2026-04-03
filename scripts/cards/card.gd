@@ -34,6 +34,7 @@ const _TRANSITIONS: Dictionary = {
 	CardTypes.CardState.IDLE: [
 		CardTypes.CardState.HOVERED,
 		CardTypes.CardState.DISABLED,
+		CardTypes.CardState.PREVIEWING,
 	],
 	CardTypes.CardState.HOVERED: [
 		CardTypes.CardState.IDLE,
@@ -47,6 +48,10 @@ const _TRANSITIONS: Dictionary = {
 	CardTypes.CardState.PLAYED: [],
 	CardTypes.CardState.DISABLED: [
 		CardTypes.CardState.IDLE,
+	],
+	CardTypes.CardState.PREVIEWING: [
+		CardTypes.CardState.IDLE,
+		CardTypes.CardState.PLAYED,
 	],
 }
 
@@ -100,6 +105,9 @@ func _apply_state_visuals() -> void:
 		CardTypes.CardState.DISABLED:
 			set_hover_shader(false)
 			modulate.a = 0.5
+		CardTypes.CardState.PREVIEWING:
+			set_hover_shader(false)
+			modulate.a = 1.0
 
 
 ## Enable or disable the shader's hover-reactive tilt effect.

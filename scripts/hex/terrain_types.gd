@@ -65,6 +65,34 @@ static func get_properties(terrain: Terrain) -> Dictionary:
 			return {passability = Passability.PASSABLE, los = LOSType.OPEN, elevation = Elevation.NORMAL, effect = ""}
 
 
+## Tile texture paths for each terrain type.
+## Returns {ground: String, middle: String} where middle may be empty.
+static func get_tile_textures(terrain: Terrain) -> Dictionary:
+	const BASE: String = "res://assets/tiles/hexagon_realms/"
+	match terrain:
+		Terrain.GRASSLAND:
+			return {ground = BASE + "ground/grassland.png", middle = ""}
+		Terrain.FOREST:
+			return {ground = BASE + "ground/grassland.png", middle = BASE + "middle/forest.png"}
+		Terrain.MOUNTAIN:
+			return {ground = BASE + "ground/stone.png", middle = BASE + "middle/mountain.png"}
+		Terrain.RIVER:
+			return {ground = BASE + "ground/water.png", middle = ""}
+		Terrain.BRIDGE:
+			return {ground = BASE + "ground/water.png", middle = BASE + "middle/bridge.png"}
+		Terrain.RUINS:
+			return {ground = BASE + "ground/dirt.png", middle = BASE + "middle/ruins.png"}
+		Terrain.VANTAGE_POINT:
+			return {ground = BASE + "ground/stone.png", middle = BASE + "middle/mountain.png"}
+		Terrain.FROZEN_GROUND:
+			return {ground = BASE + "ground/snow.png", middle = ""}
+		Terrain.ICE_WALL:
+			return {ground = BASE + "ground/snow.png", middle = BASE + "middle/ice_wall.png"}
+		_:
+			# Fallback for terrain types without tile art yet
+			return {ground = BASE + "ground/grassland.png", middle = ""}
+
+
 ## Color for debug/placeholder rendering of each terrain type.
 static func get_debug_color(terrain: Terrain) -> Color:
 	match terrain:

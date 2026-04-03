@@ -12,7 +12,6 @@ shadow_color = Color(0, 0, 0, 0.7)
 shadow_offset = Vector2(2, 2)
 
 [node name="ManaDisplay" type="Node2D" unique_id=1930399947]
-position = Vector2(60, 1010)
 script = ExtResource("1_mana")
 
 [node name="CrystalSprite" type="Sprite2D" parent="." unique_id=732557894]

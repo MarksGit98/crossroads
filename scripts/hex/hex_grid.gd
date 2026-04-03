@@ -1,5 +1,6 @@
 ## Visual hex grid for the duel board.
-## Owns the grid data (Dictionary of HexTileData) and draws all hexes using _draw().
+## Owns the grid data (Dictionary of HexTileData) and delegates rendering
+## to HexTileRenderer (Sprite2D per tile with 2.5D depth).
 ## Click detection converts mouse position to hex coordinates.
 class_name HexGrid
 extends Node2D
@@ -10,11 +11,8 @@ signal hex_clicked(coord: Vector2i)
 signal hex_hovered(coord: Vector2i)
 
 ## Size of each hex (center to vertex distance in pixels).
-@export var hex_size: float = 40.0
-## Width of the hex outline stroke.
-@export var outline_width: float = 2.0
-## Color of hex outlines.
-@export var outline_color: Color = Color(0.2, 0.2, 0.2, 0.6)
+## Derived from tile asset width: 120 / 2 = 60.
+@export var hex_size: float = 60.0
 
 ## Grid dimensions (columns x rows).
 var grid_cols: int = 0
@@ -28,12 +26,17 @@ var selected_hex: Vector2i = Vector2i(-1, -1)
 ## Set of hex coords to highlight (e.g. movement range, attack range).
 var highlight_tiles: Dictionary = {}  # coord -> Color
 
-## Cached corner offsets — computed once, reused every draw.
-var _corner_offsets: PackedVector2Array
+## Node2D that holds spawned creature instances. Set by the duel scene.
+## If null, creatures are added as children of this HexGrid.
+var creature_parent: Node2D = null
+
+## Tile renderer child — manages all Sprite2D visuals.
+var _renderer: HexTileRenderer = null
 
 
 func _ready() -> void:
-	_corner_offsets = HexHelper.hex_corner_offsets(hex_size)
+	_renderer = HexTileRenderer.new()
+	add_child(_renderer)
 
 
 ## Initialize the grid from a 2D array of terrain types.
@@ -50,15 +53,15 @@ func load_layout(layout: Array) -> void:
 			tiles[coord] = HexTileData.new(coord, terrain as TerrainTypes.Terrain)
 
 	_assign_spawn_tiles()
-	queue_redraw()
+	_renderer.build_visuals(tiles, hex_size)
 
 
 ## Mark which tiles are valid spawn zones for the player.
-## Currently: bottom row, columns 1-6 (excludes corner columns).
+## Left side: column 0, rows 1 through grid_rows-2 (excludes corner rows).
 func _assign_spawn_tiles() -> void:
-	var spawn_row: int = grid_rows - 1
-	for col: int in range(1, grid_cols - 1):
-		var coord: Vector2i = Vector2i(col, spawn_row)
+	var spawn_col: int = 0
+	for row: int in range(1, grid_rows - 1):
+		var coord: Vector2i = Vector2i(spawn_col, row)
 		var tile: HexTileData = tiles.get(coord)
 		if tile:
 			tile.valid_spawn = true
@@ -77,13 +80,23 @@ func is_in_bounds(coord: Vector2i) -> bool:
 ## Set highlight tiles (e.g. for showing movement range).
 func set_highlights(coords: Dictionary) -> void:
 	highlight_tiles = coords
-	queue_redraw()
+	_renderer.set_highlights(coords)
 
 
 ## Clear all highlights.
 func clear_highlights() -> void:
 	highlight_tiles.clear()
-	queue_redraw()
+	_renderer.clear_highlights()
+
+
+## Toggle hex border lines on/off.
+func set_borders_visible(visible_flag: bool) -> void:
+	_renderer.set_borders_visible(visible_flag)
+
+
+## Whether hex borders are currently visible.
+func are_borders_visible() -> bool:
+	return _renderer.are_borders_visible()
 
 
 ## Return all valid spawn hexes (passable, in spawn zone, unoccupied).
@@ -116,54 +129,6 @@ func remove_creature(coord: Vector2i) -> void:
 		tile.occupant = null
 
 
-# --- Drawing ---
-
-func _draw() -> void:
-	for coord: Vector2i in tiles:
-		var tile: HexTileData = tiles[coord]
-		var center: Vector2 = HexHelper.hex_to_world(coord, hex_size)
-
-		# Fill with terrain color
-		var fill_color: Color = TerrainTypes.get_debug_color(tile.terrain)
-		_draw_hex_filled(center, fill_color)
-
-		# Spawn zone tint
-		if tile.valid_spawn:
-			_draw_hex_filled(center, Color(1.0, 0.9, 0.2, 0.25))
-
-		# Draw highlight overlay if present
-		if highlight_tiles.has(coord):
-			var h_color: Color = highlight_tiles[coord]
-			_draw_hex_filled(center, h_color)
-
-		# Hover highlight
-		if coord == hovered_hex:
-			_draw_hex_filled(center, Color(1.0, 1.0, 1.0, 0.15))
-
-		# Selection highlight
-		if coord == selected_hex:
-			_draw_hex_outline(center, Color.WHITE, 3.0)
-
-		# Outline
-		_draw_hex_outline(center, outline_color, outline_width)
-
-
-## Draw a filled hexagon at center position.
-func _draw_hex_filled(center: Vector2, color: Color) -> void:
-	var points: PackedVector2Array = PackedVector2Array()
-	for offset: Vector2 in _corner_offsets:
-		points.append(center + offset)
-	draw_colored_polygon(points, color)
-
-
-## Draw a hex outline at center position.
-func _draw_hex_outline(center: Vector2, color: Color, width: float) -> void:
-	for i: int in range(6):
-		var from_pt: Vector2 = center + _corner_offsets[i]
-		var to_pt: Vector2 = center + _corner_offsets[(i + 1) % 6]
-		draw_line(from_pt, to_pt, color, width, true)
-
-
 # --- Input ---
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -173,10 +138,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		if is_in_bounds(coord) and coord != hovered_hex:
 			hovered_hex = coord
 			hex_hovered.emit(coord)
-			queue_redraw()
+			_renderer.set_hover(coord)
 		elif not is_in_bounds(coord) and hovered_hex != Vector2i(-1, -1):
 			hovered_hex = Vector2i(-1, -1)
-			queue_redraw()
+			_renderer.clear_hover()
 
 	elif event is InputEventMouseButton:
 		var mb: InputEventMouseButton = event as InputEventMouseButton
@@ -186,4 +151,4 @@ func _unhandled_input(event: InputEvent) -> void:
 			if is_in_bounds(coord):
 				selected_hex = coord
 				hex_clicked.emit(coord)
-				queue_redraw()
+				_renderer.set_selection(coord)
