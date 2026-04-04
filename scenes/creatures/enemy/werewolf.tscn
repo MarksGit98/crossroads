@@ -1,0 +1,24 @@
+[gd_scene format=3 uid="uid://bshh3ijka2m6e"]
+
+[ext_resource type="PackedScene" uid="uid://bfnbd4apuyw35" path="res://scenes/creatures/enemy/enemy.tscn" id="1_base"]
+[ext_resource type="SpriteFrames" uid="uid://c1tupl3njw0sm" path="res://resources/creatures/enemy/werewolf_frames.tres" id="3_frames"]
+
+[node name="Werewolf" unique_id=2068496570 instance=ExtResource("1_base")]
+
+[node name="AnimatedSprite2D" parent="." index="0"]
+sprite_frames = ExtResource("3_frames")
+
+[node name="NameLabel" parent="." index="3"]
+offset_left = -24.0
+offset_top = -32.0
+offset_right = 36.0
+offset_bottom = -18.0
+
+[node name="HPLabel" parent="." index="4"]
+offset_left = -24.0
+offset_top = -21.0
+offset_right = 36.0
+offset_bottom = -9.0
+
+[node name="CollisionShape2D" parent="ClickArea" index="0"]
+position = Vector2(5.5, -1)

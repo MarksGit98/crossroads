@@ -10,9 +10,13 @@ extends Node2D
 @onready var camera: Camera2D = $Camera2D
 @onready var player: Player = $Player
 @onready var hand: Node2D = $HandLayer/Hand
+@onready var action_menu: CreatureActionMenu = $MenuLayer/CreatureActionMenu
 
 var _generator: TerrainGenerator = TerrainGenerator.new()
 var _current_seed: int = -1
+var _interaction_manager: BoardInteractionManager = null
+var _enemy_spawner: EnemySpawner = EnemySpawner.new()
+var _combat_count: int = 0
 
 
 func _ready() -> void:
@@ -29,8 +33,27 @@ func _ready() -> void:
 	# Tell the hex grid where to parent spawned creatures.
 	hex_grid.creature_parent = creatures_node
 
+	# Set up the board interaction manager for creature selection and movement.
+	_interaction_manager = BoardInteractionManager.new()
+	add_child(_interaction_manager)
+	_interaction_manager.setup(hex_grid, hand, action_menu, camera)
+
+	# Auto-register any creature added to the Creatures node.
+	creatures_node.child_entered_tree.connect(_on_creature_child_added)
+
+	# Spawn enemies on the right side of the grid.
+	_enemy_spawner.spawn_enemies(_combat_count, hex_grid, creatures_node)
+
 	# Start the first turn so mana initializes
 	player.start_turn()
+
+
+## Register newly spawned creatures with the interaction manager.
+func _on_creature_child_added(node: Node) -> void:
+	# Wait one frame so the creature is fully initialized.
+	await get_tree().process_frame
+	if node is Creature:
+		_interaction_manager.register_creature(node as Creature)
 
 
 func _generate_new_map() -> void:
@@ -74,8 +97,8 @@ func _on_hex_clicked(coord: Vector2i) -> void:
 		coord.x, coord.y, terrain_name, passable_name, los_name, elevation_name, occupant_text
 	]
 
-	# Don't overwrite targeting highlights when the hand is picking a hex
-	if not hand.is_targeting():
+	# Don't overwrite highlights when the hand or interaction manager owns them.
+	if not hand.is_targeting() and not _interaction_manager.is_busy():
 		var highlights: Dictionary = {}
 		var neighbors: Array[Vector2i] = HexHelper.hex_neighbors(coord)
 		for n: Vector2i in neighbors:

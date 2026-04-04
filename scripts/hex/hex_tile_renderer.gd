@@ -33,6 +33,9 @@ var _highlight_texture: Texture2D = null
 ## Hex border overlay node (toggle-able debug lines).
 var _border_overlay: HexBorderOverlay = null
 
+## Highlight border overlay — draws white outlines around highlighted hexes.
+var _highlight_border: HexBorderOverlay = null
+
 ## Hex size used for positioning.
 var hex_size: float = 60.0
 
@@ -45,7 +48,7 @@ func build_visuals(tiles: Dictionary, p_hex_size: float) -> void:
 
 	# Use the first ground texture as the highlight base (we modulate it).
 	# Load it once for overlay use.
-	_highlight_texture = _load_texture("res://assets/tiles/hexagon_realms/ground/hr_ground_10.png")
+	_highlight_texture = _load_texture("res://assets/tiles/hexagon_realms/ground/grassland.png")
 
 	# Sort tiles by row so we add children in draw order (top rows first).
 	var sorted_coords: Array = tiles.keys()
@@ -109,6 +112,14 @@ func build_visuals(tiles: Dictionary, p_hex_size: float) -> void:
 		all_coords.append(coord)
 	_border_overlay.rebuild(all_coords, hex_size, DEPTH_OFFSET)
 
+	# Create highlight border overlay (shown when hexes are highlighted).
+	_highlight_border = HexBorderOverlay.new()
+	_highlight_border.border_color = Color(1.0, 1.0, 1.0, 0.9)
+	_highlight_border.border_width = 2.5
+	_highlight_border.z_index = 9998
+	_highlight_border.visible = false
+	add_child(_highlight_border)
+
 
 ## Update highlight overlays. coords is Dictionary of coord -> Color.
 func set_highlights(coords: Dictionary) -> void:
@@ -122,6 +133,17 @@ func set_highlights(coords: Dictionary) -> void:
 		sprite.z_index = coord.y * 2 + 1
 		add_child(sprite)
 		_highlight_sprites[coord] = sprite
+
+	# Draw white borders around the highlighted hexes.
+	if _highlight_border:
+		var highlight_coords: Array[Vector2i] = []
+		for coord: Vector2i in coords:
+			highlight_coords.append(coord)
+		if highlight_coords.is_empty():
+			_highlight_border.visible = false
+		else:
+			_highlight_border.rebuild(highlight_coords, hex_size, DEPTH_OFFSET)
+			_highlight_border.visible = true
 
 
 ## Clear all highlight overlays.
@@ -186,6 +208,8 @@ func _clear_highlights() -> void:
 		var sprite: Sprite2D = _highlight_sprites[coord]
 		sprite.queue_free()
 	_highlight_sprites.clear()
+	if _highlight_border:
+		_highlight_border.visible = false
 
 
 ## Remove all visual nodes and reset caches.
@@ -207,3 +231,6 @@ func _clear_all() -> void:
 	if _border_overlay:
 		_border_overlay.queue_free()
 		_border_overlay = null
+	if _highlight_border:
+		_highlight_border.queue_free()
+		_highlight_border = null

@@ -2,7 +2,7 @@
 
 [ext_resource type="PackedScene" uid="uid://dhmnojgcubeqc" path="res://scenes/creatures/creature.tscn" id="1_base"]
 [ext_resource type="Script" uid="uid://cbw8skgcjltof" path="res://scripts/creatures/viking_creature.gd" id="2_script"]
-[ext_resource type="SpriteFrames" path="res://resources/creatures/viking/soldier_frames.tres" id="3_frames"]
+[ext_resource type="SpriteFrames" uid="uid://c84lov0ck3go" path="res://resources/creatures/viking/soldier_frames.tres" id="3_frames"]
 
 [node name="Soldier" unique_id=369828914 instance=ExtResource("1_base")]
 script = ExtResource("2_script")
@@ -10,5 +10,15 @@ script = ExtResource("2_script")
 [node name="AnimatedSprite2D" parent="." index="0" unique_id=48825108]
 sprite_frames = ExtResource("3_frames")
 
+[node name="NameLabel" parent="." index="3" unique_id=145797761]
+offset_left = -31.0
+offset_top = -36.0
+offset_right = 29.0
+offset_bottom = -22.0
+
+[node name="HPLabel" parent="." index="4" unique_id=1282598892]
+offset_top = -24.0
+offset_bottom = -12.0
+
 [node name="CollisionShape2D" parent="ClickArea" parent_id_path=PackedInt32Array(1358188028) index="0" unique_id=469784076]
-position = Vector2(-0.5, -2)
+position = Vector2(-1.75, -2.5)

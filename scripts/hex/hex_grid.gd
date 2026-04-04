@@ -129,6 +129,46 @@ func remove_creature(coord: Vector2i) -> void:
 		tile.occupant = null
 
 
+## Compute all valid movement destinations for a creature using BFS.
+## Respects move_range, passability, occupancy, and grid bounds.
+## At range 1 this returns walkable adjacent hexes; at higher ranges it
+## correctly avoids pathing through blocked tiles.
+func get_valid_moves_for(creature: Creature) -> Array[Vector2i]:
+	var start: Vector2i = creature.hex_position
+	var max_steps: int = creature.current_move_range
+	if max_steps <= 0:
+		return []
+
+	var visited: Dictionary = {}  # coord -> true
+	visited[start] = true
+
+	var frontier: Array[Vector2i] = [start]
+	var reachable: Array[Vector2i] = []
+
+	for step: int in range(max_steps):
+		var next_frontier: Array[Vector2i] = []
+		for coord: Vector2i in frontier:
+			var neighbors: Array[Vector2i] = HexHelper.hex_neighbors(coord)
+			for neighbor: Vector2i in neighbors:
+				if visited.has(neighbor):
+					continue
+				if not is_in_bounds(neighbor):
+					continue
+				var tile: HexTileData = get_tile(neighbor)
+				if tile == null:
+					continue
+				if not tile.is_passable():
+					continue
+				if tile.is_occupied():
+					continue
+				visited[neighbor] = true
+				reachable.append(neighbor)
+				next_frontier.append(neighbor)
+		frontier = next_frontier
+
+	return reachable
+
+
 # --- Input ---
 
 func _unhandled_input(event: InputEvent) -> void:

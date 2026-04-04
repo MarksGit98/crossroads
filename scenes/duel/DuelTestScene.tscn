@@ -1,10 +1,11 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://scripts/duel/duel_test_scene.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/hex/hex_grid.gd" id="2"]
 [ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="3"]
 [ext_resource type="PackedScene" path="res://scenes/hand/hand.tscn" id="4"]
 [ext_resource type="PackedScene" path="res://scenes/deck/deck.tscn" id="5"]
+[ext_resource type="PackedScene" path="res://scenes/ui/creature_action_menu.tscn" id="6_menu"]
 
 [node name="DuelTestScene" type="Node2D"]
 script = ExtResource("1")
@@ -29,6 +30,11 @@ layer = 10
 layer = 10
 
 [node name="Deck" parent="DeckLayer" instance=ExtResource("5")]
+
+[node name="MenuLayer" type="CanvasLayer" parent="."]
+layer = 15
+
+[node name="CreatureActionMenu" parent="MenuLayer" instance=ExtResource("6_menu")]
 
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
 layer = 20

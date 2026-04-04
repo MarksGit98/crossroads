@@ -1,0 +1,20 @@
+[gd_scene format=3 uid="uid://b3bmxwgw1qyle"]
+
+[ext_resource type="PackedScene" uid="uid://bfnbd4apuyw35" path="res://scenes/creatures/enemy/enemy.tscn" id="1_base"]
+[ext_resource type="SpriteFrames" uid="uid://b0n11htq5gs07" path="res://resources/creatures/enemy/slime_frames.tres" id="3_frames"]
+
+[node name="Slime" unique_id=164043111 instance=ExtResource("1_base")]
+
+[node name="AnimatedSprite2D" parent="." index="0"]
+sprite_frames = ExtResource("3_frames")
+
+[node name="NameLabel" parent="." index="3"]
+offset_top = -28.0
+offset_bottom = -14.0
+
+[node name="HPLabel" parent="." index="4"]
+offset_top = -16.0
+offset_bottom = -4.0
+
+[node name="CollisionShape2D" parent="ClickArea" index="0"]
+position = Vector2(-1.5, 1.5)

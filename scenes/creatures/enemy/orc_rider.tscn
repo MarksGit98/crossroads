@@ -1,0 +1,24 @@
+[gd_scene format=3 uid="uid://citdsb5e5dypx"]
+
+[ext_resource type="PackedScene" uid="uid://bfnbd4apuyw35" path="res://scenes/creatures/enemy/enemy.tscn" id="1_base"]
+[ext_resource type="SpriteFrames" uid="uid://cnc7rpssgan2r" path="res://resources/creatures/enemy/orc_rider_frames.tres" id="3_frames"]
+
+[node name="OrcRider" unique_id=500928711 instance=ExtResource("1_base")]
+
+[node name="AnimatedSprite2D" parent="." index="0"]
+sprite_frames = ExtResource("3_frames")
+
+[node name="NameLabel" parent="." index="3"]
+offset_left = -27.0
+offset_top = -46.0
+offset_right = 33.0
+offset_bottom = -32.0
+
+[node name="HPLabel" parent="." index="4"]
+offset_left = -27.0
+offset_top = -33.0
+offset_right = 33.0
+offset_bottom = -21.0
+
+[node name="CollisionShape2D" parent="ClickArea" index="0"]
+position = Vector2(3, -7)

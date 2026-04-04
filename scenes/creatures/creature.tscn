@@ -123,7 +123,7 @@ _data = {
 }
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_click"]
-size = Vector2(34, 30)
+size = Vector2(16.75, 19)
 
 [node name="Creature" type="Node2D" unique_id=810019056]
 script = ExtResource("1_creature")
@@ -137,6 +137,30 @@ libraries/ = SubResource("AnimationLibrary_main")
 
 [node name="CreatureStateMachine" type="Node" parent="." unique_id=933333786]
 script = ExtResource("2_state_machine")
+
+[node name="NameLabel" type="Label" parent="." unique_id=145797761]
+offset_left = -30.0
+offset_top = -36.0
+offset_right = 30.0
+offset_bottom = -22.0
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 8
+text = "Name"
+horizontal_alignment = 1
+
+[node name="HPLabel" type="Label" parent="." unique_id=1282598892]
+offset_left = -29.0
+offset_top = -22.0
+offset_right = 31.0
+offset_bottom = -10.0
+theme_override_colors/font_color = Color(0.8, 1, 0.8, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 7
+text = "0 / 0"
+horizontal_alignment = 1
 
 [node name="ClickArea" type="Area2D" parent="." unique_id=1358188028]
 monitorable = false

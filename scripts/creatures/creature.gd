@@ -89,6 +89,12 @@ var _active_cooldowns: Dictionary = {}
 ## Click/hover detection area for player interaction.
 @onready var click_area: Area2D = $ClickArea
 
+## Label showing creature name above the sprite.
+@onready var _name_label: Label = $NameLabel
+
+## Label showing current HP / max HP below the name label.
+@onready var _hp_label: Label = $HPLabel
+
 
 # =============================================================================
 # Initialization
@@ -139,6 +145,9 @@ func initialize(data: CardData, hex: Vector2i, hex_size: float) -> void:
 	# Wire up click/hover detection.
 	_connect_click_area()
 
+	# Create overhead labels (name + HP).
+	_create_overhead_labels()
+
 
 ## Connect click area signals for player interaction.
 func _connect_click_area() -> void:
@@ -147,6 +156,32 @@ func _connect_click_area() -> void:
 	click_area.input_event.connect(_on_click_area_input_event)
 	click_area.mouse_entered.connect(_on_click_area_mouse_entered)
 	click_area.mouse_exited.connect(_on_click_area_mouse_exited)
+
+
+# =============================================================================
+# Overhead Labels
+# =============================================================================
+
+## Populate the overhead name and HP labels with current values.
+func _create_overhead_labels() -> void:
+	if _name_label:
+		_name_label.text = creature_name
+	_update_hp_label()
+
+	# Connect signals to auto-update the HP label.
+	damaged.connect(_on_hp_changed)
+	healed.connect(_on_hp_changed)
+
+
+## Update the HP label text.
+func _update_hp_label() -> void:
+	if _hp_label:
+		_hp_label.text = "%d / %d" % [current_hp, max_hp]
+
+
+## Called when HP changes from damage or healing.
+func _on_hp_changed(_creature: Creature, _amount: int) -> void:
+	_update_hp_label()
 
 
 # =============================================================================
@@ -159,7 +194,6 @@ func _on_click_area_input_event(_viewport: Node, event: InputEvent, _shape_idx: 
 	if event is InputEventMouseButton:
 		var mb: InputEventMouseButton = event as InputEventMouseButton
 		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
-			print("CLICK")
 			clicked.emit(self)
 			# Consume the input so the hex grid doesn't also process the click.
 			get_viewport().set_input_as_handled()
@@ -186,11 +220,22 @@ func _apply_creature_scale(hex_size: float) -> void:
 	if frame_width <= 0.0:
 		# No frame data — apply scale factor directly.
 		scale = Vector2(sprite_scale_factor, sprite_scale_factor)
+		_apply_label_inverse_scale()
 		return
 	var hex_diameter: float = hex_size * 2.0
 	var base_scale: float = hex_diameter / frame_width
 	var final_scale: float = base_scale * sprite_scale_factor
 	scale = Vector2(final_scale, final_scale)
+	_apply_label_inverse_scale()
+
+
+## Counter the parent's scale on labels so text renders at native resolution.
+func _apply_label_inverse_scale() -> void:
+	var inv: Vector2 = Vector2(1.0 / scale.x, 1.0 / scale.y)
+	if _name_label:
+		_name_label.scale = inv
+	if _hp_label:
+		_hp_label.scale = inv
 
 
 ## Read the width of the first idle animation frame to determine sprite size.
@@ -564,7 +609,7 @@ func move_to(new_hex: Vector2i, hex_size: float) -> void:
 
 	# Tween to the target position.
 	var tween: Tween = create_tween().set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_CUBIC)
-	tween.tween_property(self, "position", target_pos, 0.4)
+	tween.tween_property(self, "position", target_pos, 1.5)  # DEBUG: was 0.4
 	await tween.finished
 
 	# Stop walking, return to idle.

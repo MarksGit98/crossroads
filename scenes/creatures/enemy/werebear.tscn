@@ -1,0 +1,24 @@
+[gd_scene format=3 uid="uid://cslyvcy60hor2"]
+
+[ext_resource type="PackedScene" uid="uid://bfnbd4apuyw35" path="res://scenes/creatures/enemy/enemy.tscn" id="1_base"]
+[ext_resource type="SpriteFrames" uid="uid://ca4rbx680bd17" path="res://resources/creatures/enemy/werebear_frames.tres" id="3_frames"]
+
+[node name="Werebear" unique_id=2128827352 instance=ExtResource("1_base")]
+
+[node name="AnimatedSprite2D" parent="." index="0"]
+sprite_frames = ExtResource("3_frames")
+
+[node name="NameLabel" parent="." index="3"]
+offset_left = -28.0
+offset_top = -34.0
+offset_right = 32.0
+offset_bottom = -20.0
+
+[node name="HPLabel" parent="." index="4"]
+offset_left = -28.0
+offset_top = -22.0
+offset_right = 32.0
+offset_bottom = -10.0
+
+[node name="CollisionShape2D" parent="ClickArea" index="0"]
+position = Vector2(1.5, -1.5)
