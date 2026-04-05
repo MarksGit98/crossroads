@@ -7,6 +7,8 @@ extends Node2D
 @onready var creatures_node: Node2D = $Creatures
 @onready var info_label: Label = $CanvasLayer/InfoLabel
 @onready var border_toggle: Button = $CanvasLayer/BorderToggle
+@onready var end_turn_button: Button = $CanvasLayer/EndTurnButton
+@onready var turn_label: Label = $CanvasLayer/TurnLabel
 @onready var camera: Camera2D = $Camera2D
 @onready var player: Player = $Player
 @onready var hand: Node2D = $HandLayer/Hand
@@ -15,6 +17,7 @@ extends Node2D
 var _generator: TerrainGenerator = TerrainGenerator.new()
 var _current_seed: int = -1
 var _interaction_manager: BoardInteractionManager = null
+var _turn_manager: TurnManager = null
 var _enemy_spawner: EnemySpawner = EnemySpawner.new()
 var _combat_count: int = 0
 
@@ -26,6 +29,7 @@ func _ready() -> void:
 	hex_grid.hex_clicked.connect(_on_hex_clicked)
 	hex_grid.hex_hovered.connect(_on_hex_hovered)
 	border_toggle.pressed.connect(_on_border_toggle_pressed)
+	end_turn_button.pressed.connect(_on_end_turn_pressed)
 
 	# Wire the hand to the hex grid for targeting mode
 	hand.board = hex_grid
@@ -37,6 +41,8 @@ func _ready() -> void:
 	_interaction_manager = BoardInteractionManager.new()
 	add_child(_interaction_manager)
 	_interaction_manager.setup(hex_grid, hand, action_menu, camera)
+	# Start disabled — TurnManager will enable during action phase.
+	_interaction_manager.set_enabled(false)
 
 	# Auto-register any creature added to the Creatures node.
 	creatures_node.child_entered_tree.connect(_on_creature_child_added)
@@ -44,8 +50,17 @@ func _ready() -> void:
 	# Spawn enemies on the right side of the grid.
 	_enemy_spawner.spawn_enemies(_combat_count, hex_grid, creatures_node)
 
-	# Start the first turn so mana initializes
-	player.start_turn()
+	# Set up the turn manager.
+	_turn_manager = TurnManager.new()
+	add_child(_turn_manager)
+	_turn_manager.setup(player, hand, hex_grid, creatures_node, _interaction_manager)
+	_turn_manager.phase_changed.connect(_on_phase_changed)
+
+	# Disable hand auto-draw — TurnManager controls draws now.
+	# The hand's _on_deck_ready auto-draw needs to be skipped.
+	# We do this by starting combat after a frame (so deck is ready).
+	await get_tree().process_frame
+	_turn_manager.begin_combat()
 
 
 ## Register newly spawned creatures with the interaction manager.
@@ -54,6 +69,31 @@ func _on_creature_child_added(node: Node) -> void:
 	await get_tree().process_frame
 	if node is Creature:
 		_interaction_manager.register_creature(node as Creature)
+
+
+## Handle End Turn button press.
+func _on_end_turn_pressed() -> void:
+	_turn_manager.on_end_turn_pressed()
+
+
+## Update UI when the turn phase changes.
+func _on_phase_changed(new_phase: TurnManager.Phase) -> void:
+	turn_label.text = _turn_manager.get_phase_name()
+
+	# Show/hide end turn button based on phase.
+	match new_phase:
+		TurnManager.Phase.ACTION_PHASE:
+			end_turn_button.disabled = false
+			# Enable hand interaction during action phase.
+			hand.set_process_input(true)
+			hand.set_process_unhandled_input(true)
+		TurnManager.Phase.ENEMY_TURN:
+			end_turn_button.disabled = true
+			turn_label.text = "Enemy Turn"
+		_:
+			end_turn_button.disabled = true
+			hand.set_process_input(false)
+			hand.set_process_unhandled_input(false)
 
 
 func _generate_new_map() -> void:

@@ -75,6 +75,10 @@ func initialize_enemy(data: EnemyData, hex: Vector2i, hex_size: float) -> void:
 	# Scale the creature to fit the hex.
 	_apply_creature_scale(hex_size)
 
+	# Apply inverse scale to intent label so it renders at native resolution.
+	if _intent_label and scale.x != 0.0:
+		_intent_label.scale = Vector2(1.0 / scale.x, 1.0 / scale.y)
+
 	# Flip sprite so enemies face left (toward the player side).
 	if animated_sprite:
 		animated_sprite.flip_h = true

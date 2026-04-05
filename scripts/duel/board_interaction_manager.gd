@@ -42,6 +42,10 @@ var current_state: int = BoardState.IDLE
 var _selected_creature: Creature = null
 var _valid_targets: Array[Vector2i] = []
 
+## Whether the manager is enabled (accepts player input).
+## Disabled during non-action phases (draw, end turn, enemy turn).
+var _enabled: bool = true
+
 ## Highlight colors for different interaction modes.
 const MOVE_HIGHLIGHT_COLOR: Color = Color(0.2, 0.7, 1.0, 0.35)
 const ATTACK_HIGHLIGHT_COLOR: Color = Color(1.0, 0.3, 0.2, 0.35)
@@ -105,7 +109,9 @@ func _unhandled_input(event: InputEvent) -> void:
 # =============================================================================
 
 func _on_creature_clicked(creature: Creature) -> void:
-	# Don't process creature clicks during card targeting or execution.
+	# Don't process clicks when disabled or during card targeting / execution.
+	if not _enabled:
+		return
 	if hand.is_targeting():
 		return
 	if current_state == BoardState.EXECUTING:
@@ -129,6 +135,8 @@ func _on_creature_clicked(creature: Creature) -> void:
 # =============================================================================
 
 func _on_hex_clicked(coord: Vector2i) -> void:
+	if not _enabled:
+		return
 	# During card targeting, the hand handles hex clicks.
 	if hand.is_targeting():
 		return
@@ -274,6 +282,14 @@ func _cancel_interaction() -> void:
 ## Whether the manager is in an active interaction (not idle).
 func is_busy() -> bool:
 	return current_state != BoardState.IDLE
+
+
+## Enable or disable player interaction.
+## When disabled, all clicks are ignored and any active interaction is cancelled.
+func set_enabled(enabled: bool) -> void:
+	_enabled = enabled
+	if not enabled and current_state != BoardState.IDLE:
+		_cancel_interaction()
 
 
 # =============================================================================

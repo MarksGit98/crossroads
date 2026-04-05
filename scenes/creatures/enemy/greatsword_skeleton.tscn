@@ -5,20 +5,20 @@
 
 [node name="GreatswordSkeleton" unique_id=151125922 instance=ExtResource("1_base")]
 
-[node name="AnimatedSprite2D" parent="." index="0"]
+[node name="AnimatedSprite2D" parent="." index="0" unique_id=1056943193]
 sprite_frames = ExtResource("3_frames")
 
-[node name="NameLabel" parent="." index="3"]
+[node name="NameLabel" parent="." index="3" unique_id=938323789]
 offset_left = -33.0
-offset_top = -34.0
+offset_top = -40.0
 offset_right = 27.0
 offset_bottom = -20.0
 
-[node name="HPLabel" parent="." index="4"]
+[node name="HPLabel" parent="." index="4" unique_id=755769429]
 offset_left = -33.0
-offset_top = -23.0
+offset_top = -26.0
 offset_right = 27.0
-offset_bottom = -11.0
+offset_bottom = -9.0
 
-[node name="CollisionShape2D" parent="ClickArea" index="0"]
+[node name="CollisionShape2D" parent="ClickArea" parent_id_path=PackedInt32Array(932775425) index="0" unique_id=1123921904]
 position = Vector2(-5, -2)

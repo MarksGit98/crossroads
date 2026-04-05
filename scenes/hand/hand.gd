@@ -151,12 +151,8 @@ func _ready() -> void:
 	# Releasing a card above this line triggers a play attempt.
 	var hovered_screen_y: float = position.y + hover_lift
 	play_threshold_y = hovered_screen_y - CARD_HEIGHT * 0.5
-	# Wait for the deck to signal it's ready before drawing the initial hand.
-	# This avoids timing issues where Hand._ready() fires before Deck._ready().
-	if deck.draw_pile.size() > 0:
-		draw_cards(6)
-	else:
-		deck.deck_ready.connect(_on_deck_ready, CONNECT_ONE_SHOT)
+	# Initial draw is now controlled by TurnManager.begin_combat().
+	# Hand no longer auto-draws on ready.
 
 
 ## Calculates card visual height from the card scene's sprite.
@@ -739,8 +735,9 @@ func is_targeting() -> bool:
 
 
 ## Called when the deck signals it's built and ready to draw from.
+## No longer used — TurnManager controls initial draw via begin_combat().
 func _on_deck_ready() -> void:
-	draw_cards(6)
+	pass
 
 
 ## Draw multiple cards from the deck into the hand.

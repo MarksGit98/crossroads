@@ -54,3 +54,30 @@ offset_right = 200.0
 offset_bottom = 90.0
 text = "Toggle Hex Borders"
 theme_override_font_sizes/font_size = 14
+
+[node name="EndTurnButton" type="Button" parent="CanvasLayer"]
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.0
+offset_left = 400.0
+offset_top = 500.0
+offset_right = 550.0
+offset_bottom = 550.0
+theme_override_font_sizes/font_size = 20
+text = "End Turn"
+
+[node name="TurnLabel" type="Label" parent="CanvasLayer"]
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = 400.0
+offset_top = 460.0
+offset_right = 550.0
+offset_bottom = 495.0
+theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(1, 1, 0.7, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 2
+text = "Your Turn"
+horizontal_alignment = 1

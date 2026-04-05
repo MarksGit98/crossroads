@@ -123,7 +123,7 @@ _data = {
 }
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_click"]
-size = Vector2(27, 16)
+size = Vector2(32, 20)
 
 [node name="Enemy" type="Node2D" unique_id=374012359]
 script = ExtResource("1_enemy")
@@ -146,7 +146,7 @@ offset_bottom = -46.0
 theme_override_colors/font_color = Color(1, 0.85, 0.85, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 2
-theme_override_font_sizes/font_size = 8
+theme_override_font_sizes/font_size = 14
 text = "Name"
 horizontal_alignment = 1
 
@@ -158,7 +158,7 @@ offset_bottom = -36.0
 theme_override_colors/font_color = Color(1, 0.8, 0.8, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 2
-theme_override_font_sizes/font_size = 7
+theme_override_font_sizes/font_size = 12
 text = "0 / 0"
 horizontal_alignment = 1
 
@@ -170,7 +170,7 @@ offset_bottom = -62.0
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 2
-theme_override_font_sizes/font_size = 10
+theme_override_font_sizes/font_size = 16
 horizontal_alignment = 1
 
 [node name="ClickArea" type="Area2D" parent="." unique_id=932775425]
