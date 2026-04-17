@@ -34,11 +34,9 @@ signal menu_closed()
 ## The creature this menu is currently showing for.
 var _creature: Creature = null
 
-## The player reference — needed for mana affordability checks.
-var _player: Player = null
-
-## The hex grid reference — needed for effect-specific checks (e.g. MARK_SPAWN).
-var _hex_grid: HexGrid = null
+## Duel-wide context passed in via show_for_creature(). Used for mana
+## affordability + effect-specific checks (MARK_SPAWN, etc.).
+var _ctx: DuelContext = null
 
 ## Dynamically created buttons for each active ability.
 var _active_buttons: Array[Button] = []
@@ -85,12 +83,11 @@ func _ready() -> void:
 ## Show the menu for a given creature at a screen position.
 ## Enables/disables buttons based on what the creature can currently do.
 ## has_attack_targets indicates whether any hostile creatures are within attack range.
-## p_player provides the player reference for mana affordability checks.
-## p_hex_grid provides the board reference for effect-specific checks.
-func show_for_creature(creature: Creature, screen_pos: Vector2, has_attack_targets: bool = false, p_player: Player = null, p_hex_grid: HexGrid = null) -> void:
+## p_ctx is the DuelContext — the menu queries it for mana affordability,
+## effect-specific availability, etc.
+func show_for_creature(creature: Creature, screen_pos: Vector2, has_attack_targets: bool = false, p_ctx: DuelContext = null) -> void:
 	_creature = creature
-	_player = p_player
-	_hex_grid = p_hex_grid
+	_ctx = p_ctx
 
 	# Enable/disable based on creature capabilities.
 	_move_button.disabled = not creature.can_move()
@@ -100,7 +97,6 @@ func show_for_creature(creature: Creature, screen_pos: Vector2, has_attack_targe
 	_clear_active_buttons()
 
 	# Create a button for each active ability.
-	var context: Dictionary = {"player": _player, "hex_grid": _hex_grid}
 	for i: int in range(creature.active_count()):
 		var ability: Dictionary = creature.card_data.actives[i]
 		var ability_name: String = ability.get("name", "Active %d" % (i + 1))
@@ -109,7 +105,7 @@ func show_for_creature(creature: Creature, screen_pos: Vector2, has_attack_targe
 		btn.text = ability_name
 		btn.custom_minimum_size = Vector2(0, BUTTON_HEIGHT)
 		btn.add_theme_font_size_override("font_size", BUTTON_FONT_SIZE)
-		btn.disabled = not creature.can_use_active(i, context)
+		btn.disabled = not creature.can_use_active(i, _ctx)
 
 		# Capture the index for the lambda closures.
 		var idx: int = i
@@ -150,8 +146,7 @@ func hide_menu() -> void:
 	_tooltip_panel.visible = false
 	_hovered_ability_index = -1
 	_creature = null
-	_player = null
-	_hex_grid = null
+	_ctx = null
 	menu_closed.emit()
 
 

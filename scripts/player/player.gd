@@ -52,6 +52,11 @@ var max_creatures: int = DEFAULT_MAX_CREATURES
 ## Turn counter — incremented each time start_turn() is called.
 var turn_number: int = 0
 
+## Tracks play-limiting effects from creatures, hex tiles, and persistent cards.
+## Queried by Card.can_play() to veto plays that would exceed any active cap
+## (e.g. "max 1 spell per turn") and updated as restrictions come and go.
+var play_restrictions: PlayRestrictionRegistry = PlayRestrictionRegistry.new()
+
 
 func _ready() -> void:
 	# Auto-wire the mana display if it exists as a child.
@@ -77,6 +82,8 @@ func start_turn() -> void:
 
 ## Called at the end of each player turn.
 func end_turn() -> void:
+	# Clear per-turn play counts and expire turn-bound restrictions.
+	play_restrictions.on_turn_ended()
 	turn_ended.emit(turn_number)
 
 
@@ -148,9 +155,44 @@ func modify_attack(delta: int) -> void:
 
 
 # =============================================================================
-# Queries
+# Cost System
 # =============================================================================
 
-## Whether the player can afford a given mana cost.
-func can_afford(cost: int) -> bool:
-	return current_mana >= cost
+## Whether the player can afford a given cost of the given type.
+## Defaults to MANA for backward compatibility with older call sites.
+## Supported cost types: MANA, HEALTH. Unsupported types return false.
+func can_afford(cost: int, cost_type: CardTypes.CostType = CardTypes.CostType.MANA) -> bool:
+	if cost <= 0:
+		return true
+	match cost_type:
+		CardTypes.CostType.MANA:
+			return current_mana >= cost
+		CardTypes.CostType.HEALTH:
+			# Cost must leave the player alive (pay N requires > N health).
+			return current_health > cost
+		_:
+			# SACRIFICE / DISCARD / EXHAUST not yet supported.
+			push_warning("Player.can_afford: unsupported cost type %s" % cost_type)
+			return false
+
+
+## Deduct a cost of the given type. Returns true on success, false if the
+## player could not afford it (no partial payment). Emits the appropriate
+## *_changed signal when a deduction actually occurs.
+func pay_cost(cost: int, cost_type: CardTypes.CostType = CardTypes.CostType.MANA) -> bool:
+	if not can_afford(cost, cost_type):
+		return false
+	if cost <= 0:
+		return true
+	match cost_type:
+		CardTypes.CostType.MANA:
+			current_mana -= cost
+			mana_changed.emit(current_mana, max_mana)
+		CardTypes.CostType.HEALTH:
+			current_health -= cost
+			health_changed.emit(current_health, max_health)
+			if current_health <= 0:
+				_on_defeated()
+		_:
+			return false
+	return true

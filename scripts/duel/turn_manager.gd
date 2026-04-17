@@ -61,11 +61,27 @@ const BANNER_FONT_SIZE: int = 48
 # Dependencies (set via setup())
 # =============================================================================
 
-var player: Player
-var hand: Node2D  ## The Hand node — has draw_cards() method.
-var hex_grid: HexGrid
-var creatures_node: Node2D  ## Parent of all creature nodes on the board.
+## Duel-wide context — single source of truth for player, board, hand, etc.
+## All references below are derived accessors for readability in this file.
+var ctx: DuelContext
+
+## Interaction manager isn't duel-scoped (it's a UI concern), so it's passed
+## directly alongside the context.
 var interaction_manager: BoardInteractionManager
+
+# -- Convenience accessors derived from ctx --
+
+var player: Player:
+	get: return ctx.player if ctx else null
+
+var hand: Node2D:
+	get: return ctx.hand if ctx else null
+
+var hex_grid: HexGrid:
+	get: return ctx.board if ctx else null
+
+var creatures_node: Node2D:
+	get: return ctx.creatures_node if ctx else null
 
 # =============================================================================
 # State
@@ -81,17 +97,10 @@ var _is_first_turn: bool = true
 # =============================================================================
 
 ## Wire all dependencies. Called by the duel scene in _ready().
-func setup(
-	p_player: Player,
-	p_hand: Node2D,
-	p_grid: HexGrid,
-	p_creatures: Node2D,
-	p_interaction: BoardInteractionManager,
-) -> void:
-	player = p_player
-	hand = p_hand
-	hex_grid = p_grid
-	creatures_node = p_creatures
+## The DuelContext carries player, hand, board, and creatures_node; the
+## interaction manager is injected separately because it's UI-scoped.
+func setup(p_ctx: DuelContext, p_interaction: BoardInteractionManager) -> void:
+	ctx = p_ctx
 	interaction_manager = p_interaction
 
 

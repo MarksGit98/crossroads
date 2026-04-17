@@ -28,19 +28,18 @@ func _populate_layout(layout: Control, data: CardData) -> void:
 # Play System — target validation and one-shot resolution
 # =============================================================================
 
-func can_play(context: Dictionary) -> bool:
-	if not super.can_play(context):
+func can_play(ctx: DuelContext) -> bool:
+	if not super.can_play(ctx):
 		return false
 	# Spells that need targeting must have at least one valid target on the board.
 	if needs_targeting():
-		var board: HexGrid = context.get("board")
-		if board and get_valid_targets(board).is_empty():
+		if ctx and ctx.board and get_valid_targets(ctx.board).is_empty():
 			return false
 	return true
 
 
-func play(context: Dictionary) -> void:
-	super.play(context)
+func play(ctx: DuelContext) -> void:
+	super.play(ctx)
 	# Spells are one-shot — all effect logic handled by resolve_effects() in base.
 
 

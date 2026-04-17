@@ -284,7 +284,7 @@ func end_turn() -> void:
 #   "effects":     Array[Dictionary] — effects to resolve on target
 
 ## Whether a specific active ability can be used right now.
-func can_use_active(ability_index: int, context: Dictionary) -> bool:
+func can_use_active(ability_index: int, ctx: DuelContext) -> bool:
 	if card_data == null:
 		return false
 	if ability_index < 0 or ability_index >= card_data.actives.size():
@@ -303,11 +303,12 @@ func can_use_active(ability_index: int, context: Dictionary) -> bool:
 	if remaining_cd > 0:
 		return false
 
-	# Check mana cost.
+	# Check cost (defaults to MANA; abilities may specify "cost_type" for HEALTH, etc.).
 	var cost: int = ability.get("cost", 0)
 	if cost > 0:
-		var player: Player = context.get("player")
-		if player == null or not player.can_afford(cost):
+		var cost_type: int = ability.get("cost_type", CardTypes.CostType.MANA)
+		var player: Player = ctx.player if ctx else null
+		if player == null or not player.can_afford(cost, cost_type):
 			return false
 
 	# Effect-specific checks.
@@ -316,7 +317,7 @@ func can_use_active(ability_index: int, context: Dictionary) -> bool:
 		var effect_type: int = effect.get("type", -1)
 		if effect_type == CardTypes.EffectType.MARK_SPAWN:
 			# Don't allow marking a hex that is already a valid spawn location.
-			var grid: HexGrid = context.get("hex_grid")
+			var grid: HexGrid = ctx.board if ctx else null
 			if grid:
 				var tile: HexTileData = grid.get_tile(hex_position)
 				if tile and tile.valid_spawn:
@@ -325,24 +326,30 @@ func can_use_active(ability_index: int, context: Dictionary) -> bool:
 	return true
 
 
-## Execute an active ability against the given context (with targets).
-func use_active(ability_index: int, context: Dictionary) -> void:
-	if not can_use_active(ability_index, context):
+## Execute an active ability against the given duel context (with targets).
+func use_active(ability_index: int, ctx: DuelContext) -> void:
+	if not can_use_active(ability_index, ctx):
 		return
 
 	var ability: Dictionary = card_data.actives[ability_index]
 
-	# Spend mana if the ability has a cost.
+	# Pay the cost (mana by default, health if "cost_type" is set).
 	var cost: int = ability.get("cost", 0)
 	if cost > 0:
-		var player: Player = context.get("player")
+		var cost_type: int = ability.get("cost_type", CardTypes.CostType.MANA)
+		var player: Player = ctx.player if ctx else null
 		if player:
-			player.spend_mana(cost)
+			player.pay_cost(cost, cost_type)
+
+	# Stamp the caster on the context so effects targeting EffectTarget.CASTER
+	# (self-buffs, self-heals) can find this creature.
+	if ctx:
+		ctx.caster = self
 
 	# Resolve all effects in the ability.
 	var effects: Array = ability.get("effects", [])
 	for effect: Dictionary in effects:
-		_apply_active_effect(effect, context)
+		_apply_active_effect(effect, ctx)
 
 	# Start cooldown.
 	var cooldown: int = ability.get("cooldown", 0)
@@ -415,15 +422,16 @@ func _matches_target_rule(tile: HexTileData, target_rule: int) -> bool:
 
 
 ## Apply a single effect from an active ability.
-func _apply_active_effect(effect: Dictionary, context: Dictionary) -> void:
+func _apply_active_effect(effect: Dictionary, ctx: DuelContext) -> void:
 	var effect_type: int = effect.get("type", -1)
 	match effect_type:
 		CardTypes.EffectType.MARK_SPAWN:
-			var grid: HexGrid = context.get("hex_grid")
+			var grid: HexGrid = ctx.board if ctx else null
 			if grid:
 				grid.mark_spawn(hex_position)
 		_:
 			# TODO: Dispatch remaining effect types (DEAL_DAMAGE, HEAL, etc.).
+			# When implemented, reuse Card._resolve_effect_targets + dispatch logic.
 			pass
 
 

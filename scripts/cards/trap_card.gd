@@ -16,17 +16,18 @@ var is_triggered: bool = false
 # Play System — place trap on one or more hexes
 # =============================================================================
 
-func can_play(context: Dictionary) -> bool:
-	if not super.can_play(context):
+func can_play(ctx: DuelContext) -> bool:
+	if not super.can_play(ctx):
 		return false
 	# TODO: Validate target hexes are empty and in valid zone when board is wired.
 	return true
 
 
-func play(context: Dictionary) -> void:
-	super.play(context)
-	var target_hexes: Array = context.get("target_hexes", [])
-	for hex: Vector2i in target_hexes:
+func play(ctx: DuelContext) -> void:
+	super.play(ctx)
+	if ctx == null:
+		return
+	for hex: Vector2i in ctx.target_hexes:
 		_place_on_hex(hex)
 
 
@@ -74,15 +75,15 @@ func should_trigger(_unit: Creature, hex: Vector2i) -> bool:
 
 
 ## Fire the trap's effects and mark it as triggered.
-func trigger(context: Dictionary) -> void:
+func trigger(ctx: DuelContext) -> void:
 	if card_data == null:
 		return
 	is_triggered = true
-	resolve_effects(context)
+	resolve_effects(ctx)
 
 
 ## Apply a single effect dictionary from the card data.
 ## Overrides base to allow trap-specific effect handling.
-func _apply_effect(effect: Dictionary, context: Dictionary) -> void:
+func _apply_effect(effect: Dictionary, ctx: DuelContext) -> void:
 	# TODO: Dispatch to the effect system based on effect["type"].
-	super._apply_effect(effect, context)
+	super._apply_effect(effect, ctx)

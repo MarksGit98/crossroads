@@ -26,6 +26,11 @@ var _turn_manager: TurnManager = null
 var _enemy_spawner: EnemySpawner = EnemySpawner.new()
 var _combat_count: int = 0
 
+## The duel-wide single source of truth. Built once here and injected into
+## every subsystem (Hand, BoardInteractionManager, TurnManager, …). Cards and
+## creatures receive it per-action via setup / use_active / can_play calls.
+var duel_ctx: DuelContext = DuelContext.new()
+
 ## Margins for anchoring the end-turn UI to the bottom-right corner.
 const END_TURN_MARGIN_RIGHT: float = 20.0
 const END_TURN_MARGIN_BOTTOM: float = 100.0
@@ -50,16 +55,28 @@ func _ready() -> void:
 	border_toggle.pressed.connect(_on_border_toggle_pressed)
 	end_turn_button.pressed.connect(_on_end_turn_pressed)
 
-	# Wire the hand to the hex grid for targeting mode
-	hand.board = hex_grid
-
 	# Tell the hex grid where to parent spawned creatures.
 	hex_grid.creature_parent = creatures_node
+
+	# Set up the turn manager instance first so we can include it in the context.
+	_turn_manager = TurnManager.new()
+	add_child(_turn_manager)
+
+	# Build the duel-wide context and inject it into every subsystem.
+	duel_ctx.configure(
+		player,
+		hex_grid,
+		_turn_manager,
+		hand,
+		creatures_node,
+		current_gamemode,
+	)
+	hand.set_duel_context(duel_ctx)
 
 	# Set up the board interaction manager for creature selection and movement.
 	_interaction_manager = BoardInteractionManager.new()
 	add_child(_interaction_manager)
-	_interaction_manager.setup(hex_grid, hand, action_menu, camera, player)
+	_interaction_manager.setup(duel_ctx, action_menu, camera)
 	# Start disabled — TurnManager will enable during action phase.
 	_interaction_manager.set_enabled(false)
 
@@ -69,10 +86,8 @@ func _ready() -> void:
 	# Spawn enemies on the right side of the grid.
 	_enemy_spawner.spawn_enemies(_combat_count, hex_grid, creatures_node)
 
-	# Set up the turn manager.
-	_turn_manager = TurnManager.new()
-	add_child(_turn_manager)
-	_turn_manager.setup(player, hand, hex_grid, creatures_node, _interaction_manager)
+	# Finish wiring the turn manager now that the interaction manager exists.
+	_turn_manager.setup(duel_ctx, _interaction_manager)
 	_turn_manager.phase_changed.connect(_on_phase_changed)
 
 	# Disable hand auto-draw — TurnManager controls draws now.

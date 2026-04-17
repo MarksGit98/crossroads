@@ -29,11 +29,25 @@ enum BoardState {
 # Dependencies (set via setup())
 # =============================================================================
 
-var hex_grid: HexGrid
-var hand: Node2D  # The Hand node — checked via hand.is_targeting()
+## Duel-wide context — single source of truth for player, board, etc.
+## All references below are derived accessors for readability.
+var ctx: DuelContext
+
+## The action menu + camera aren't duel-scoped — they're injected directly
+## since they don't need to live on the context object.
 var action_menu: CreatureActionMenu
 var camera: Camera2D
-var player: Player
+
+# -- Convenience accessors derived from ctx --
+
+var hex_grid: HexGrid:
+	get: return ctx.board if ctx else null
+
+var hand: Node2D:
+	get: return ctx.hand if ctx else null
+
+var player: Player:
+	get: return ctx.player if ctx else null
 
 # =============================================================================
 # State
@@ -59,12 +73,12 @@ const ACTIVE_HIGHLIGHT_COLOR: Color = Color(0.8, 0.4, 1.0, 0.35)
 # =============================================================================
 
 ## Wire all dependencies. Called by the duel scene in _ready().
-func setup(p_grid: HexGrid, p_hand: Node2D, p_menu: CreatureActionMenu, p_camera: Camera2D, p_player: Player = null) -> void:
-	hex_grid = p_grid
-	hand = p_hand
+## The DuelContext provides hex_grid/hand/player; only the menu and camera
+## (which are UI-scoped, not duel-scoped) are injected separately.
+func setup(p_ctx: DuelContext, p_menu: CreatureActionMenu, p_camera: Camera2D) -> void:
+	ctx = p_ctx
 	action_menu = p_menu
 	camera = p_camera
-	player = p_player
 
 	# Connect hex grid signals.
 	hex_grid.hex_clicked.connect(_on_hex_clicked)
@@ -140,7 +154,7 @@ func _on_creature_clicked(creature: Creature) -> void:
 
 	# Convert creature world position to screen position for the menu.
 	var screen_pos: Vector2 = _world_to_screen(creature.global_position)
-	action_menu.show_for_creature(creature, screen_pos, has_attack_targets, player, hex_grid)
+	action_menu.show_for_creature(creature, screen_pos, has_attack_targets, ctx)
 
 
 # =============================================================================
@@ -308,9 +322,8 @@ func _enter_active_targeting(ability_index: int) -> void:
 		_cancel_interaction()
 		return
 
-	# Validate the requested ability is usable.
-	var context: Dictionary = {"player": player}
-	if not _selected_creature.can_use_active(ability_index, context):
+	# Validate the requested ability is usable with the current duel state.
+	if not _selected_creature.can_use_active(ability_index, ctx):
 		_cancel_interaction()
 		return
 
@@ -349,13 +362,11 @@ func _execute_active_on_target(coord: Vector2i) -> void:
 	_transition_to(BoardState.EXECUTING)
 	hex_grid.clear_highlights()
 
-	var context: Dictionary = {
-		"player": player,
-		"hex_grid": hex_grid,
-		"target_hex": coord,
-	}
-
-	_selected_creature.use_active(_active_ability_index, context)
+	# Stamp the target hex on the context so effects can read it uniformly
+	# with how hand-played spell targets are passed.
+	ctx.set_targets([coord], [], _selected_creature)
+	_selected_creature.use_active(_active_ability_index, ctx)
+	ctx.clear_transient()
 
 	# Wait a beat for the attack animation to play.
 	if _selected_creature.state_machine and _selected_creature.state_machine.current_state == CreatureStateMachine.State.ATTACKING:

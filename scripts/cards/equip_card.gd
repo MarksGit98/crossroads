@@ -21,11 +21,13 @@ func _populate_layout(layout: Control, data: CardData) -> void:
 # Play System — attach to a friendly creature
 # =============================================================================
 
-func can_play(context: Dictionary) -> bool:
-	if not super.can_play(context):
+func can_play(ctx: DuelContext) -> bool:
+	if not super.can_play(ctx):
 		return false
-	var board: HexGrid = context.get("board")
-	var target_hexes: Array = context.get("target_hexes", [])
+	if ctx == null:
+		return false
+	var board: HexGrid = ctx.board
+	var target_hexes: Array = ctx.target_hexes
 
 	if target_hexes.is_empty():
 		# No target chosen yet — verify at least one valid target exists.
@@ -45,10 +47,12 @@ func can_play(context: Dictionary) -> bool:
 	return true
 
 
-func play(context: Dictionary) -> void:
-	super.play(context)
-	var target_hexes: Array = context.get("target_hexes", [])
-	var board: HexGrid = context.get("board")
+func play(ctx: DuelContext) -> void:
+	super.play(ctx)
+	if ctx == null:
+		return
+	var target_hexes: Array = ctx.target_hexes
+	var board: HexGrid = ctx.board
 	if not target_hexes.is_empty() and board:
 		var tile: HexTileData = board.get_tile(target_hexes[0])
 		if tile and tile.occupant is Creature:

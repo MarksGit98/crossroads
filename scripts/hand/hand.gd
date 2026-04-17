@@ -112,17 +112,17 @@ const PREVIEW_FADE_DURATION: float = 0.35
 ## Reference to the Player node for mana checks.
 @onready var player: Player = $"../../Player"
 
-## Reference to the HexGrid for targeting. Wired by DuelTestScene.
-## Uses a setter to keep _play_context in sync when assigned.
-var board: HexGrid = null:
-	set(value):
-		board = value
-		if _play_context:
-			_play_context["board"] = value
+## Convenience accessor for the board — derived from the duel context.
+## Kept as a property for readability in targeting code.
+var board: HexGrid:
+	get:
+		return _duel_ctx.board if _duel_ctx else null
 
-## Persistent play context — built once when the board ref is set, reused every play.
-## Only "target_hexes" and "target_units" are updated per play.
-var _play_context: Dictionary = {}
+## Duel-wide context. Injected by the duel root scene via set_duel_context().
+## All card.can_play() / card.play() calls stamp transient targets on this
+## context and pass it straight through — Hand does not maintain its own
+## parallel context dict.
+var _duel_ctx: DuelContext = null
 
 ## Preloaded card scenes by type for dynamic instantiation.
 var _card_scenes: Dictionary = {
@@ -145,7 +145,6 @@ func _ready() -> void:
 	# visible on hover in the hand. Divide CARD_HEIGHT by ~2 as the card origin
 	# point is in the center of the card.
 	hover_lift = -position.y + (screen_size.y - CARD_HEIGHT / 1.9)
-	_init_play_context()
 	# Play threshold: half a card height above the hovered card's screen-space center.
 	# Hovered card screen Y = hand position.y + hover_lift (local offset).
 	# Releasing a card above this line triggers a play attempt.
@@ -418,10 +417,18 @@ func _finish_drag(card: Card) -> void:
 
 ## Attempt to play a card after it's been dragged above the play threshold.
 func _try_play_card(card: Card) -> void:
-	_set_play_targets()
+	if _duel_ctx == null:
+		push_warning("Hand: cannot play — no DuelContext injected.")
+		card.set_state(CardTypes.CardState.IDLE)
+		arrange_hand()
+		shake_card(card, 10)
+		return
 
-	# Pre-condition 1: Can the player afford this card?
-	if not card.can_play(_play_context):
+	# Reset transient fields before each play attempt so stale targets don't leak.
+	_duel_ctx.clear_transient()
+
+	# Pre-condition 1: affordability + play restrictions.
+	if not card.can_play(_duel_ctx):
 		card.set_state(CardTypes.CardState.IDLE)
 		arrange_hand()
 		shake_card(card, 10)
@@ -447,26 +454,14 @@ func _try_play_card(card: Card) -> void:
 		_enter_targeting(card, targets)
 	else:
 		# No targeting needed — play immediately.
-		card.play(_play_context)
+		card.play(_duel_ctx)
 		_finalize_play(card)
 
 
-## Build the persistent play context once. Called from _ready() and when board is set.
-## Static refs (player, board) live for the entire duel; per-play fields are stamped
-## via _set_play_targets() before each play call.
-func _init_play_context() -> void:
-	_play_context = {
-		"player": player,
-		"board": board,
-		"target_hexes": [],
-		"target_units": [],
-	}
-
-
-## Stamp per-play target data onto the cached context. Cheap — no allocation.
-func _set_play_targets(target_hexes: Array[Vector2i] = [], target_units: Array = []) -> void:
-	_play_context["target_hexes"] = target_hexes
-	_play_context["target_units"] = target_units
+## Inject the duel context. Called by the duel root scene at setup.
+## The duel root owns the context and threads it through all systems.
+func set_duel_context(ctx: DuelContext) -> void:
+	_duel_ctx = ctx
 
 
 ## Finalize playing a card: transition state, discard data, free the node.
@@ -635,10 +630,11 @@ func _confirm_targeting() -> void:
 	_required_target_count = 1
 
 	# Transition PREVIEWING → PLAYED, then stamp targets and execute.
-	# Mana is spent inside card.play() -> super.play().
+	# Cost is paid inside card.play() -> super.play().
 	card.set_state(CardTypes.CardState.PLAYED)
-	_set_play_targets(targets)
-	card.play(_play_context)
+	_duel_ctx.set_targets(targets)
+	card.play(_duel_ctx)
+	_duel_ctx.clear_transient()
 	_finalize_play(card)
 
 

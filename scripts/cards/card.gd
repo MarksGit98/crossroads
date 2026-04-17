@@ -206,46 +206,51 @@ func _populate_layout(layout: Control, data: CardData) -> void:
 # =============================================================================
 # Play System (virtual — subclasses override for type-specific behavior)
 # =============================================================================
-# Context dictionary keys:
-#   "player":       Player — the owning player
-#   "board":        HexGrid — the game board
-#   "target_hexes": Array[Vector2i] — selected hex target(s)
-#   "target_units": Array — selected unit target(s)
+# All play-system methods take a DuelContext — the duel-wide single source of
+# truth. Cards never reach across to Player / HexGrid / TurnManager directly;
+# everything flows through ctx. Transient target data (target_hexes, caster)
+# is stamped onto the context by the caller before play().
 
-## Whether this card can be played given the current context.
-## Base implementation validates mana cost. Subclasses call super and add checks.
-func can_play(context: Dictionary) -> bool:
+## Whether this card can be played given the current duel context.
+## Base implementation validates:
+##   1. Cost affordability (MANA, HEALTH, …) via the generalized cost system.
+##   2. Active play restrictions from creatures, hex tiles, and persistent card
+##      effects (e.g. "max 1 spell per turn", "no equipment this turn").
+## Subclasses call super and add card-type-specific checks (targeting, etc.).
+func can_play(ctx: DuelContext) -> bool:
 	if card_data == null:
 		return false
-	var player: Player = context.get("player")
-	if player == null:
+	if ctx == null or ctx.player == null:
 		return false
-	if card_data.cost_type == CardTypes.CostType.MANA:
-		if not player.can_afford(card_data.cost_value):
-			return false
+	var player: Player = ctx.player
+	if not player.can_afford(card_data.cost_value, card_data.cost_type):
+		return false
+	if not player.play_restrictions.can_play_card(card_data):
+		return false
 	return true
 
 
 ## Execute the card's play logic. Called after can_play() succeeds.
-## Base implementation spends mana and resolves effects.
-func play(context: Dictionary) -> void:
-	var player: Player = context.get("player")
-	if player and card_data.cost_type == CardTypes.CostType.MANA:
-		player.spend_mana(card_data.cost_value)
-	resolve_effects(context)
+## Base implementation pays the card's cost (whatever the type), records the
+## play for per-turn caps, and resolves effects.
+func play(ctx: DuelContext) -> void:
+	if ctx and ctx.player:
+		ctx.player.pay_cost(card_data.cost_value, card_data.cost_type)
+		ctx.player.play_restrictions.record_card_played(card_data)
+	resolve_effects(ctx)
 
 
 ## Resolve ALL effects on this card. Every card type can carry effects.
-func resolve_effects(context: Dictionary) -> void:
+func resolve_effects(ctx: DuelContext) -> void:
 	for effect: Dictionary in card_data.effects:
-		_apply_effect(effect, context)
+		_apply_effect(effect, ctx)
 
 
 ## Apply a single effect dictionary. Resolves the effect target(s) from the
-## play context and dispatches to the appropriate Creature method.
-func _apply_effect(effect: Dictionary, context: Dictionary) -> void:
+## duel context and dispatches to the appropriate Creature method.
+func _apply_effect(effect: Dictionary, ctx: DuelContext) -> void:
 	var effect_type: int = effect.get("type", -1)
-	var targets: Array[Creature] = _resolve_effect_targets(effect, context)
+	var targets: Array[Creature] = _resolve_effect_targets(effect, ctx)
 
 	match effect_type:
 		CardTypes.EffectType.DEAL_DAMAGE:
@@ -302,7 +307,7 @@ func _apply_effect(effect: Dictionary, context: Dictionary) -> void:
 		CardTypes.EffectType.DRAW_CARD:
 			# Drawing is player-level, not creature-level — handled separately.
 			var value: int = effect.get("value", 1)
-			var player: Player = context.get("player")
+			var player: Player = ctx.player if ctx else null
 			if player and player.has_method("draw_cards"):
 				player.draw_cards(value)
 
@@ -325,8 +330,8 @@ func _apply_effect(effect: Dictionary, context: Dictionary) -> void:
 			pass
 
 		CardTypes.EffectType.MARK_SPAWN:
-			var board: HexGrid = context.get("board")
-			var target_hexes: Array = context.get("target_hexes", [])
+			var board: HexGrid = ctx.board if ctx else null
+			var target_hexes: Array = ctx.target_hexes if ctx else []
 			if board and not target_hexes.is_empty():
 				board.mark_spawn(target_hexes[0])
 
@@ -349,11 +354,13 @@ func _apply_effect(effect: Dictionary, context: Dictionary) -> void:
 
 
 ## Resolve which creatures are targeted by a single effect, based on
-## EffectTarget enum and the play context (selected hexes, board state).
-func _resolve_effect_targets(effect: Dictionary, context: Dictionary) -> Array[Creature]:
+## EffectTarget enum and the duel context (selected hexes, board state).
+func _resolve_effect_targets(effect: Dictionary, ctx: DuelContext) -> Array[Creature]:
 	var result: Array[Creature] = []
-	var board: HexGrid = context.get("board")
-	var target_hexes: Array = context.get("target_hexes", [])
+	if ctx == null:
+		return result
+	var board: HexGrid = ctx.board
+	var target_hexes: Array = ctx.target_hexes
 	var effect_target: int = effect.get("target", CardTypes.EffectTarget.SELECTED)
 
 	if board == null:
@@ -368,12 +375,10 @@ func _resolve_effect_targets(effect: Dictionary, context: Dictionary) -> Array[C
 					result.append(tile.occupant as Creature)
 
 		CardTypes.EffectTarget.CASTER:
-			# The unit that played the card — for spells this is effectively
-			# "self". We don't track a caster creature for hand-played spells,
-			# so fall through to target_hexes if a caster isn't in context.
-			var caster: Creature = context.get("caster") as Creature
-			if caster:
-				result.append(caster)
+			# The unit that played the card — for creature-cast abilities.
+			# For hand-played spells this is null.
+			if ctx.caster:
+				result.append(ctx.caster)
 
 		CardTypes.EffectTarget.ALL_IN_AREA:
 			# All units on the board.
