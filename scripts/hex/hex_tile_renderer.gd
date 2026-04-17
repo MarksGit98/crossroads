@@ -18,6 +18,9 @@ var _texture_cache: Dictionary = {}  # path -> Texture2D
 ## Per-tile visual nodes: coord -> {ground: Sprite2D, middle: Sprite2D or null}
 var _tile_sprites: Dictionary = {}
 
+## Spawn-zone overlay sprites added at runtime: coord -> Sprite2D
+var _spawn_overlays: Dictionary = {}
+
 ## Highlight overlay sprites: coord -> Sprite2D
 var _highlight_sprites: Dictionary = {}
 
@@ -63,7 +66,7 @@ func build_visuals(tiles: Dictionary, p_hex_size: float) -> void:
 		var ground_sprite: Sprite2D = Sprite2D.new()
 		ground_sprite.texture = _load_texture(tex_info.ground)
 		ground_sprite.position = world_pos + Vector2(0, DEPTH_OFFSET)
-		ground_sprite.z_index = coord.y * 2
+		ground_sprite.z_index = coord.y * 3
 		add_child(ground_sprite)
 
 		# Spawn zone tint overlay
@@ -71,7 +74,7 @@ func build_visuals(tiles: Dictionary, p_hex_size: float) -> void:
 			var spawn_overlay: Sprite2D = Sprite2D.new()
 			spawn_overlay.texture = ground_sprite.texture
 			spawn_overlay.position = ground_sprite.position
-			spawn_overlay.z_index = coord.y * 2
+			spawn_overlay.z_index = coord.y * 3
 			spawn_overlay.modulate = Color(1.0, 0.9, 0.2, 0.3)
 			add_child(spawn_overlay)
 
@@ -81,7 +84,7 @@ func build_visuals(tiles: Dictionary, p_hex_size: float) -> void:
 			middle_sprite = Sprite2D.new()
 			middle_sprite.texture = _load_texture(tex_info.middle)
 			middle_sprite.position = world_pos + Vector2(0, DEPTH_OFFSET)
-			middle_sprite.z_index = coord.y * 2 + 1
+			middle_sprite.z_index = coord.y * 3 + 1
 			add_child(middle_sprite)
 
 		_tile_sprites[coord] = {ground = ground_sprite, middle = middle_sprite}
@@ -130,7 +133,7 @@ func set_highlights(coords: Dictionary) -> void:
 		sprite.texture = _highlight_texture
 		sprite.position = HexHelper.hex_to_world(coord, hex_size) + Vector2(0, DEPTH_OFFSET)
 		sprite.modulate = color
-		sprite.z_index = coord.y * 2 + 1
+		sprite.z_index = coord.y * 3 + 2
 		add_child(sprite)
 		_highlight_sprites[coord] = sprite
 
@@ -171,6 +174,22 @@ func set_selection(coord: Vector2i) -> void:
 ## Hide selection.
 func clear_selection() -> void:
 	_selection_sprite.visible = false
+
+
+## Add a spawn-zone tint overlay to a tile at runtime (e.g. from Arcane Anchor).
+func add_spawn_overlay(coord: Vector2i) -> void:
+	if _spawn_overlays.has(coord):
+		return  # Already has an overlay.
+	if not _tile_sprites.has(coord):
+		return  # No tile sprite to reference.
+	var ground_sprite: Sprite2D = _tile_sprites[coord].ground
+	var overlay: Sprite2D = Sprite2D.new()
+	overlay.texture = ground_sprite.texture
+	overlay.position = ground_sprite.position
+	overlay.z_index = coord.y * 3
+	overlay.modulate = Color(1.0, 0.9, 0.2, 0.3)
+	add_child(overlay)
+	_spawn_overlays[coord] = overlay
 
 
 ## Toggle hex border lines on/off.
@@ -215,6 +234,9 @@ func _clear_highlights() -> void:
 ## Remove all visual nodes and reset caches.
 func _clear_all() -> void:
 	_clear_highlights()
+	for coord: Vector2i in _spawn_overlays:
+		_spawn_overlays[coord].queue_free()
+	_spawn_overlays.clear()
 	for coord: Vector2i in _tile_sprites:
 		var entry: Dictionary = _tile_sprites[coord]
 		entry.ground.queue_free()

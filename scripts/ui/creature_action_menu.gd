@@ -1,7 +1,8 @@
 ## Contextual action menu that appears when a creature is selected.
 ## Positioned at the creature's screen location, shows available actions
-## (Move, Attack, Cast Active) based on the creature's current state.
+## (Move, Attack, and per-ability active buttons) based on creature state.
 ## Lives in a CanvasLayer so it renders above the game world.
+## Hovering over an active ability button shows a description tooltip.
 class_name CreatureActionMenu
 extends PanelContainer
 
@@ -9,8 +10,11 @@ extends PanelContainer
 # Signals
 # =============================================================================
 
-## Emitted when the player picks an action. Values: &"move", &"attack", &"active".
+## Emitted when the player picks a non-active action. Values: &"move", &"attack".
 signal action_selected(action: StringName)
+
+## Emitted when the player picks a specific active ability by index.
+signal active_ability_selected(ability_index: int)
 
 ## Emitted when the menu is closed without selecting an action.
 signal menu_closed()
@@ -19,9 +23,9 @@ signal menu_closed()
 # Node References
 # =============================================================================
 
+@onready var _vbox: VBoxContainer = $VBox
 @onready var _move_button: Button = $VBox/MoveButton
 @onready var _attack_button: Button = $VBox/AttackButton
-@onready var _active_button: Button = $VBox/ActiveButton
 
 # =============================================================================
 # State
@@ -29,6 +33,33 @@ signal menu_closed()
 
 ## The creature this menu is currently showing for.
 var _creature: Creature = null
+
+## The player reference — needed for mana affordability checks.
+var _player: Player = null
+
+## The hex grid reference — needed for effect-specific checks (e.g. MARK_SPAWN).
+var _hex_grid: HexGrid = null
+
+## Dynamically created buttons for each active ability.
+var _active_buttons: Array[Button] = []
+
+## Tooltip panel for active ability descriptions (created dynamically).
+var _tooltip_panel: PanelContainer = null
+var _tooltip_name_label: Label = null
+var _tooltip_cost_label: Label = null
+var _tooltip_desc_label: RichTextLabel = null
+
+## Which ability index the tooltip is currently showing (-1 = none).
+var _hovered_ability_index: int = -1
+
+# =============================================================================
+# Constants
+# =============================================================================
+
+const TOOLTIP_WIDTH: float = 220.0
+const TOOLTIP_GAP: float = 4.0
+const BUTTON_HEIGHT: float = 28.0
+const BUTTON_FONT_SIZE: int = 13
 
 
 # =============================================================================
@@ -42,7 +73,9 @@ func _ready() -> void:
 	# Connect button presses.
 	_move_button.pressed.connect(_on_move_pressed)
 	_attack_button.pressed.connect(_on_attack_pressed)
-	_active_button.pressed.connect(_on_active_pressed)
+
+	# Build the tooltip panel (hidden by default).
+	_build_tooltip()
 
 
 # =============================================================================
@@ -51,19 +84,47 @@ func _ready() -> void:
 
 ## Show the menu for a given creature at a screen position.
 ## Enables/disables buttons based on what the creature can currently do.
-func show_for_creature(creature: Creature, screen_pos: Vector2) -> void:
+## has_attack_targets indicates whether any hostile creatures are within attack range.
+## p_player provides the player reference for mana affordability checks.
+## p_hex_grid provides the board reference for effect-specific checks.
+func show_for_creature(creature: Creature, screen_pos: Vector2, has_attack_targets: bool = false, p_player: Player = null, p_hex_grid: HexGrid = null) -> void:
 	_creature = creature
+	_player = p_player
+	_hex_grid = p_hex_grid
 
 	# Enable/disable based on creature capabilities.
 	_move_button.disabled = not creature.can_move()
-	_attack_button.disabled = not creature.can_attack()
+	_attack_button.disabled = not creature.can_attack() or not has_attack_targets
 
-	# Active button: visible only if the creature has actives, disabled if none are usable.
-	if creature.active_count() > 0:
-		_active_button.visible = true
-		_active_button.disabled = not _can_use_any_active(creature)
-	else:
-		_active_button.visible = false
+	# Remove old active ability buttons from previous show call.
+	_clear_active_buttons()
+
+	# Create a button for each active ability.
+	var context: Dictionary = {"player": _player, "hex_grid": _hex_grid}
+	for i: int in range(creature.active_count()):
+		var ability: Dictionary = creature.card_data.actives[i]
+		var ability_name: String = ability.get("name", "Active %d" % (i + 1))
+
+		var btn: Button = Button.new()
+		btn.text = ability_name
+		btn.custom_minimum_size = Vector2(0, BUTTON_HEIGHT)
+		btn.add_theme_font_size_override("font_size", BUTTON_FONT_SIZE)
+		btn.disabled = not creature.can_use_active(i, context)
+
+		# Capture the index for the lambda closures.
+		var idx: int = i
+		btn.pressed.connect(_on_active_ability_pressed.bind(idx))
+		btn.mouse_entered.connect(_on_active_hover_enter.bind(idx))
+		btn.mouse_exited.connect(_on_active_hover_exit)
+		btn.focus_entered.connect(_on_active_hover_enter.bind(idx))
+		btn.focus_exited.connect(_on_active_hover_exit)
+
+		_vbox.add_child(btn)
+		_active_buttons.append(btn)
+
+	# Hide the tooltip until the player hovers.
+	_tooltip_panel.visible = false
+	_hovered_ability_index = -1
 
 	# Position the menu to the right of the creature sprite.
 	# Offset right so the menu doesn't overlap the character.
@@ -86,7 +147,11 @@ func show_for_creature(creature: Creature, screen_pos: Vector2) -> void:
 ## Hide the menu and emit menu_closed.
 func hide_menu() -> void:
 	visible = false
+	_tooltip_panel.visible = false
+	_hovered_ability_index = -1
 	_creature = null
+	_player = null
+	_hex_grid = null
 	menu_closed.emit()
 
 
@@ -111,28 +176,151 @@ func _gui_input(event: InputEvent) -> void:
 
 func _on_move_pressed() -> void:
 	visible = false
+	_tooltip_panel.visible = false
 	action_selected.emit(&"move")
 
 
 func _on_attack_pressed() -> void:
 	visible = false
+	_tooltip_panel.visible = false
 	action_selected.emit(&"attack")
 
 
-func _on_active_pressed() -> void:
+func _on_active_ability_pressed(ability_index: int) -> void:
 	visible = false
-	action_selected.emit(&"active")
+	_tooltip_panel.visible = false
+	active_ability_selected.emit(ability_index)
+
+
+# =============================================================================
+# Active Tooltip
+# =============================================================================
+
+## Build the tooltip panel programmatically. It's a sibling of this menu
+## in the same CanvasLayer so it renders at the same UI level.
+func _build_tooltip() -> void:
+	_tooltip_panel = PanelContainer.new()
+	_tooltip_panel.custom_minimum_size = Vector2(TOOLTIP_WIDTH, 0)
+	_tooltip_panel.visible = false
+	_tooltip_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	var vbox: VBoxContainer = VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	_tooltip_panel.add_child(vbox)
+
+	# Ability name (bold, larger).
+	_tooltip_name_label = Label.new()
+	_tooltip_name_label.add_theme_font_size_override("font_size", 14)
+	_tooltip_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	vbox.add_child(_tooltip_name_label)
+
+	# Mana cost line.
+	_tooltip_cost_label = Label.new()
+	_tooltip_cost_label.add_theme_font_size_override("font_size", 12)
+	_tooltip_cost_label.add_theme_color_override("font_color", Color(0.5, 0.7, 1.0))
+	vbox.add_child(_tooltip_cost_label)
+
+	# Separator.
+	var sep: HSeparator = HSeparator.new()
+	vbox.add_child(sep)
+
+	# Description (multi-line, wraps text).
+	_tooltip_desc_label = RichTextLabel.new()
+	_tooltip_desc_label.bbcode_enabled = true
+	_tooltip_desc_label.fit_content = true
+	_tooltip_desc_label.scroll_active = false
+	_tooltip_desc_label.custom_minimum_size = Vector2(TOOLTIP_WIDTH - 16, 0)
+	_tooltip_desc_label.add_theme_font_size_override("normal_font_size", 12)
+	vbox.add_child(_tooltip_desc_label)
+
+	# Add tooltip as a sibling so it's not clipped by this panel.
+	# Deferred so the parent is available.
+	_add_tooltip_deferred.call_deferred()
+
+
+## Add the tooltip to our parent once the tree is ready.
+func _add_tooltip_deferred() -> void:
+	var p: Node = get_parent()
+	if p:
+		p.add_child(_tooltip_panel)
+	else:
+		add_child(_tooltip_panel)
+
+
+## Show the tooltip for a specific ability when the player hovers its button.
+func _on_active_hover_enter(ability_index: int) -> void:
+	if _creature == null or _creature.card_data == null:
+		return
+	if not visible:
+		return
+	if ability_index < 0 or ability_index >= _creature.card_data.actives.size():
+		return
+
+	_hovered_ability_index = ability_index
+	_populate_tooltip(ability_index)
+
+	# Position tooltip to the right of this menu panel.
+	_tooltip_panel.position = Vector2(position.x + size.x + TOOLTIP_GAP, position.y)
+
+	# If it would go off the right edge, show it on the left instead.
+	var vp_size: Vector2 = get_viewport_rect().size
+	if _tooltip_panel.position.x + TOOLTIP_WIDTH > vp_size.x - 4.0:
+		_tooltip_panel.position.x = position.x - TOOLTIP_WIDTH - TOOLTIP_GAP
+
+	# Clamp vertically.
+	_tooltip_panel.position.y = clampf(
+		_tooltip_panel.position.y, 4.0,
+		vp_size.y - _tooltip_panel.size.y - 4.0
+	)
+
+	_tooltip_panel.visible = true
+
+
+## Hide the tooltip when the mouse leaves an ability button.
+func _on_active_hover_exit() -> void:
+	_tooltip_panel.visible = false
+	_hovered_ability_index = -1
+
+
+## Fill tooltip labels with data from a single active ability.
+func _populate_tooltip(ability_index: int) -> void:
+	if _creature == null or _creature.card_data == null:
+		return
+
+	var actives: Array = _creature.card_data.actives
+	if ability_index < 0 or ability_index >= actives.size():
+		return
+
+	var ability: Dictionary = actives[ability_index]
+	var ability_name: String = ability.get("name", "Unknown")
+	var cost: int = ability.get("cost", 0)
+	var cooldown: int = ability.get("cooldown", 0)
+	var description: String = ability.get("description", "No description.")
+	var cd_remaining: int = _creature.get_active_cooldown(ability_index)
+
+	# Name.
+	_tooltip_name_label.text = ability_name
+	_tooltip_name_label.visible = true
+
+	# Cost and cooldown line.
+	var cost_text: String = "Mana: %d" % cost if cost > 0 else "Mana: Free"
+	if cooldown > 0:
+		cost_text += "  |  CD: %d turns" % cooldown
+	if cd_remaining > 0:
+		cost_text += "  (Ready in %d)" % cd_remaining
+	_tooltip_cost_label.text = cost_text
+	_tooltip_cost_label.visible = true
+
+	# Description.
+	_tooltip_desc_label.text = description
 
 
 # =============================================================================
 # Helpers
 # =============================================================================
 
-## Check if the creature can use any of its active abilities.
-func _can_use_any_active(creature: Creature) -> bool:
-	# We pass an empty context for now — the full context check happens
-	# when the player actually tries to use the active.
-	for i: int in range(creature.active_count()):
-		if creature.can_use_active(i, {}):
-			return true
-	return false
+## Remove all dynamically created active ability buttons.
+func _clear_active_buttons() -> void:
+	for btn: Button in _active_buttons:
+		btn.queue_free()
+	_active_buttons.clear()

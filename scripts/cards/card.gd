@@ -241,10 +241,167 @@ func resolve_effects(context: Dictionary) -> void:
 		_apply_effect(effect, context)
 
 
-## Apply a single effect dictionary. Override for custom dispatch.
-func _apply_effect(_effect: Dictionary, _context: Dictionary) -> void:
-	# TODO: Dispatch to the effect system based on effect["type"].
-	pass
+## Apply a single effect dictionary. Resolves the effect target(s) from the
+## play context and dispatches to the appropriate Creature method.
+func _apply_effect(effect: Dictionary, context: Dictionary) -> void:
+	var effect_type: int = effect.get("type", -1)
+	var targets: Array[Creature] = _resolve_effect_targets(effect, context)
+
+	match effect_type:
+		CardTypes.EffectType.DEAL_DAMAGE:
+			var value: int = effect.get("value", 0)
+			var dmg_type: int = effect.get("damage_type", CardTypes.DamageType.PHYSICAL)
+			for creature: Creature in targets:
+				if creature.is_alive():
+					creature.take_damage(value, dmg_type as CardTypes.DamageType)
+
+		CardTypes.EffectType.HEAL:
+			var value: int = effect.get("value", 0)
+			for creature: Creature in targets:
+				if creature.is_alive():
+					creature.heal(value)
+
+		CardTypes.EffectType.MODIFY_STAT:
+			var stat: int = effect.get("stat", -1)
+			var value: int = effect.get("value", 0)
+			for creature: Creature in targets:
+				if creature.is_alive():
+					match stat:
+						CardTypes.Stat.ATK:
+							creature.modify_atk(value)
+						CardTypes.Stat.ARMOR:
+							creature.modify_armor(value)
+						CardTypes.Stat.HP, CardTypes.Stat.MAX_HP:
+							creature.heal(value) if value > 0 else creature.take_damage(-value)
+
+		CardTypes.EffectType.APPLY_STATUS:
+			var status: int = effect.get("status", -1)
+			var duration_turns: int = effect.get("duration_turns", 1)
+			if status >= 0:
+				for creature: Creature in targets:
+					if creature.is_alive():
+						creature.apply_status(status as CardTypes.StatusEffect, duration_turns)
+
+		CardTypes.EffectType.REMOVE_STATUS:
+			var status: int = effect.get("status", -1)
+			if status >= 0:
+				for creature: Creature in targets:
+					creature.remove_status(status as CardTypes.StatusEffect)
+
+		CardTypes.EffectType.CLEANSE:
+			for creature: Creature in targets:
+				if creature.has_method("cleanse"):
+					creature.cleanse()
+
+		CardTypes.EffectType.SHIELD:
+			var value: int = effect.get("value", 0)
+			for creature: Creature in targets:
+				if creature.is_alive():
+					creature.modify_armor(value)
+
+		CardTypes.EffectType.DRAW_CARD:
+			# Drawing is player-level, not creature-level — handled separately.
+			var value: int = effect.get("value", 1)
+			var player: Player = context.get("player")
+			if player and player.has_method("draw_cards"):
+				player.draw_cards(value)
+
+		CardTypes.EffectType.STUN:
+			for creature: Creature in targets:
+				if creature.is_alive():
+					creature.apply_status(CardTypes.StatusEffect.STUNNED, 1)
+
+		CardTypes.EffectType.SILENCE:
+			for creature: Creature in targets:
+				if creature.is_alive():
+					creature.apply_status(CardTypes.StatusEffect.SILENCED, 1)
+
+		CardTypes.EffectType.PUSH:
+			# TODO: Displacement effects require hex grid pathfinding.
+			pass
+
+		CardTypes.EffectType.PULL:
+			# TODO: Displacement effects require hex grid pathfinding.
+			pass
+
+		CardTypes.EffectType.MARK_SPAWN:
+			var board: HexGrid = context.get("board")
+			var target_hexes: Array = context.get("target_hexes", [])
+			if board and not target_hexes.is_empty():
+				board.mark_spawn(target_hexes[0])
+
+		CardTypes.EffectType.DESTROY:
+			for creature: Creature in targets:
+				if creature.is_alive():
+					creature.take_damage(creature.current_hp)
+
+		CardTypes.EffectType.EXECUTE:
+			var threshold_pct: int = effect.get("value", 0)
+			for creature: Creature in targets:
+				if creature.is_alive():
+					var pct: float = (float(creature.current_hp) / float(creature.max_hp)) * 100.0
+					if pct <= threshold_pct:
+						creature.take_damage(creature.current_hp)
+
+		_:
+			push_warning("Card '%s': unhandled effect type %d" % [
+				card_data.card_name if card_data else "??", effect_type])
+
+
+## Resolve which creatures are targeted by a single effect, based on
+## EffectTarget enum and the play context (selected hexes, board state).
+func _resolve_effect_targets(effect: Dictionary, context: Dictionary) -> Array[Creature]:
+	var result: Array[Creature] = []
+	var board: HexGrid = context.get("board")
+	var target_hexes: Array = context.get("target_hexes", [])
+	var effect_target: int = effect.get("target", CardTypes.EffectTarget.SELECTED)
+
+	if board == null:
+		return result
+
+	match effect_target:
+		CardTypes.EffectTarget.SELECTED:
+			# The player-selected hex — resolve to its occupant.
+			for hex: Vector2i in target_hexes:
+				var tile: HexTileData = board.get_tile(hex)
+				if tile and tile.is_occupied() and tile.occupant is Creature:
+					result.append(tile.occupant as Creature)
+
+		CardTypes.EffectTarget.CASTER:
+			# The unit that played the card — for spells this is effectively
+			# "self". We don't track a caster creature for hand-played spells,
+			# so fall through to target_hexes if a caster isn't in context.
+			var caster: Creature = context.get("caster") as Creature
+			if caster:
+				result.append(caster)
+
+		CardTypes.EffectTarget.ALL_IN_AREA:
+			# All units on the board.
+			for coord: Vector2i in board.tiles:
+				var tile: HexTileData = board.tiles[coord]
+				if tile.is_occupied() and tile.occupant is Creature:
+					result.append(tile.occupant as Creature)
+
+		CardTypes.EffectTarget.ALL_ENEMIES_IN_AREA:
+			for coord: Vector2i in board.tiles:
+				var tile: HexTileData = board.tiles[coord]
+				if tile.is_occupied() and tile.occupant is Creature and tile.occupant.is_enemy():
+					result.append(tile.occupant as Creature)
+
+		CardTypes.EffectTarget.ALL_ALLIES_IN_AREA:
+			for coord: Vector2i in board.tiles:
+				var tile: HexTileData = board.tiles[coord]
+				if tile.is_occupied() and tile.occupant is Creature and not tile.occupant.is_enemy():
+					result.append(tile.occupant as Creature)
+
+		_:
+			# Fallback: use selected targets.
+			for hex: Vector2i in target_hexes:
+				var tile: HexTileData = board.get_tile(hex)
+				if tile and tile.is_occupied() and tile.occupant is Creature:
+					result.append(tile.occupant as Creature)
+
+	return result
 
 
 ## Return valid target hexes/units for this card given the board.

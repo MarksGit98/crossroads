@@ -217,6 +217,7 @@ enum EffectType {
 	STUN,            ## Apply stunned status — shorthand for apply_status:stunned.
 	SHIELD,          ## Apply shielded with N absorption.
 	EXECUTE,         ## Destroy target if its HP is below N% of max_hp.
+	MARK_SPAWN,      ## Mark the target hex as a valid spawn location.
 }
 
 

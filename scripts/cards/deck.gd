@@ -28,6 +28,7 @@ const MARGIN_BOTTOM: float = 70.0
 
 ## Example card IDs used for testing.
 const EXAMPLE_DECK: Array[String] = [
+	# Creatures
 	"viking_archer",
 	"viking_armored_axeman",
 	"viking_knight",
@@ -36,6 +37,17 @@ const EXAMPLE_DECK: Array[String] = [
 	"viking_soldier",
 	"viking_swordsman",
 	"viking_wizard",
+	# Spells
+	"viking_war_horn",
+	"viking_healing_rune",
+	"viking_frost_bolt",
+	"viking_frost_bolt",
+	"viking_shield_wall",
+	"viking_ragnaroks_echo",
+	# Equipment
+	"viking_wolfskin_cloak",
+	"viking_runic_axe",
+	"viking_iron_helm",
 ]
 
 

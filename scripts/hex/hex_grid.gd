@@ -99,6 +99,17 @@ func are_borders_visible() -> bool:
 	return _renderer.are_borders_visible()
 
 
+## Mark a hex as a valid spawn location at runtime and update its visual overlay.
+func mark_spawn(coord: Vector2i) -> void:
+	var tile: HexTileData = get_tile(coord)
+	if tile == null:
+		return
+	if tile.valid_spawn:
+		return  # Already a spawn tile — nothing to do.
+	tile.valid_spawn = true
+	_renderer.add_spawn_overlay(coord)
+
+
 ## Return all valid spawn hexes (passable, in spawn zone, unoccupied).
 func get_valid_spawn_hexes() -> Array[Vector2i]:
 	var result: Array[Vector2i] = []
@@ -107,6 +118,16 @@ func get_valid_spawn_hexes() -> Array[Vector2i]:
 		if tile.valid_spawn and tile.is_passable() and not tile.is_occupied():
 			result.append(coord)
 	return result
+
+
+## Count all friendly (non-enemy) creatures currently on the board.
+func count_friendly_creatures() -> int:
+	var count: int = 0
+	for coord: Vector2i in tiles:
+		var tile: HexTileData = tiles[coord]
+		if tile.is_occupied() and not tile.occupant.is_enemy():
+			count += 1
+	return count
 
 
 ## Place a creature on a hex, setting the tile's occupant reference.
@@ -167,6 +188,24 @@ func get_valid_moves_for(creature: Creature) -> Array[Vector2i]:
 		frontier = next_frontier
 
 	return reachable
+
+
+## Compute all valid attack target hexes for a creature.
+## Returns hexes within attack_range that contain a hostile creature.
+func get_valid_attack_targets_for(creature: Creature) -> Array[Vector2i]:
+	var targets: Array[Vector2i] = []
+	var hexes_in_range: Array[Vector2i] = HexHelper.hex_range(creature.hex_position, creature.attack_range)
+	for coord: Vector2i in hexes_in_range:
+		if not is_in_bounds(coord):
+			continue
+		var tile: HexTileData = get_tile(coord)
+		if tile == null or not tile.is_occupied():
+			continue
+		if tile.occupant == creature:
+			continue
+		if creature.is_hostile_to(tile.occupant):
+			targets.append(coord)
+	return targets
 
 
 # --- Input ---

@@ -80,8 +80,19 @@ func rebake() -> void:
 func can_play(context: Dictionary) -> bool:
 	if not super.can_play(context):
 		return false
-	# Affordability is enough to enter targeting mode.
-	# Hex validation happens in get_valid_targets() / _is_valid_summon_hex().
+
+	var b: HexGrid = context.get("board")
+	var p: Player = context.get("player")
+
+	# Check creature limit — player can only have max_creatures friendly units on the board.
+	if p and b:
+		if b.count_friendly_creatures() >= p.max_creatures:
+			return false
+
+	# Must have at least one valid summon hex available.
+	if b and get_valid_targets(b).is_empty():
+		return false
+
 	return true
 
 

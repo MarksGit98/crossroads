@@ -5,14 +5,19 @@ extends Node2D
 
 @onready var hex_grid: HexGrid = $HexGrid
 @onready var creatures_node: Node2D = $Creatures
-@onready var info_label: Label = $CanvasLayer/InfoLabel
-@onready var border_toggle: Button = $CanvasLayer/BorderToggle
-@onready var end_turn_button: Button = $CanvasLayer/EndTurnButton
-@onready var turn_label: Label = $CanvasLayer/TurnLabel
+@onready var info_label: Label = $UILayer/InfoLabel
+@onready var border_toggle: Button = $UILayer/BorderToggle
+@onready var end_turn_button: Button = $UILayer/EndTurnButton
+@onready var turn_label: Label = $UILayer/TurnLabel
 @onready var camera: Camera2D = $Camera2D
 @onready var player: Player = $Player
 @onready var hand: Node2D = $HandLayer/Hand
 @onready var action_menu: CreatureActionMenu = $MenuLayer/CreatureActionMenu
+
+## Active gamemode for this duel. Defaults to Team Deathmatch — other modes
+## (capture-the-flag, destroy-point, escort/defend payload) will plug in later
+## once their objectives and AI behaviors are designed.
+var current_gamemode: GamemodeTypes.Mode = GamemodeTypes.DEFAULT_MODE
 
 var _generator: TerrainGenerator = TerrainGenerator.new()
 var _current_seed: int = -1
@@ -21,9 +26,23 @@ var _turn_manager: TurnManager = null
 var _enemy_spawner: EnemySpawner = EnemySpawner.new()
 var _combat_count: int = 0
 
+## Margins for anchoring the end-turn UI to the bottom-right corner.
+const END_TURN_MARGIN_RIGHT: float = 20.0
+const END_TURN_MARGIN_BOTTOM: float = 100.0
+const END_TURN_WIDTH: float = 150.0
+const END_TURN_HEIGHT: float = 50.0
+const TURN_LABEL_HEIGHT: float = 30.0
+const TURN_LABEL_GAP: float = 5.0
+
 
 func _ready() -> void:
+	print("Duel starting — Mode: %s (%s)" % [
+		GamemodeTypes.mode_name(current_gamemode),
+		GamemodeTypes.mode_description(current_gamemode),
+	])
 	_generate_new_map()
+	_anchor_end_turn_ui()
+	get_viewport().size_changed.connect(_anchor_end_turn_ui)
 
 	# Connect signals
 	hex_grid.hex_clicked.connect(_on_hex_clicked)
@@ -40,7 +59,7 @@ func _ready() -> void:
 	# Set up the board interaction manager for creature selection and movement.
 	_interaction_manager = BoardInteractionManager.new()
 	add_child(_interaction_manager)
-	_interaction_manager.setup(hex_grid, hand, action_menu, camera)
+	_interaction_manager.setup(hex_grid, hand, action_menu, camera, player)
 	# Start disabled — TurnManager will enable during action phase.
 	_interaction_manager.set_enabled(false)
 
@@ -69,6 +88,23 @@ func _on_creature_child_added(node: Node) -> void:
 	await get_tree().process_frame
 	if node is Creature:
 		_interaction_manager.register_creature(node as Creature)
+
+
+## Anchor the End Turn button and turn label to the bottom-right, above the deck.
+func _anchor_end_turn_ui() -> void:
+	var screen: Vector2 = get_viewport_rect().size
+	var btn_right: float = screen.x - END_TURN_MARGIN_RIGHT
+	var btn_left: float = btn_right - END_TURN_WIDTH
+	var btn_bottom: float = screen.y - END_TURN_MARGIN_BOTTOM
+	var btn_top: float = btn_bottom - END_TURN_HEIGHT
+
+	end_turn_button.position = Vector2(btn_left, btn_top)
+	end_turn_button.size = Vector2(END_TURN_WIDTH, END_TURN_HEIGHT)
+
+	var label_bottom: float = btn_top - TURN_LABEL_GAP
+	var label_top: float = label_bottom - TURN_LABEL_HEIGHT
+	turn_label.position = Vector2(btn_left, label_top)
+	turn_label.size = Vector2(END_TURN_WIDTH, TURN_LABEL_HEIGHT)
 
 
 ## Handle End Turn button press.
@@ -166,15 +202,24 @@ func _unhandled_input(event: InputEvent) -> void:
 			_on_border_toggle_pressed()
 			return
 
-	# Scroll to zoom
+	# Scroll to zoom toward mouse cursor
 	if event is InputEventMouseButton:
 		var mb: InputEventMouseButton = event as InputEventMouseButton
-		if mb.pressed:
+		if mb.pressed and (mb.button_index == MOUSE_BUTTON_WHEEL_UP or mb.button_index == MOUSE_BUTTON_WHEEL_DOWN):
+			# World position under the mouse before zoom.
+			var mouse_world_before: Vector2 = camera.get_global_mouse_position()
+
 			if mb.button_index == MOUSE_BUTTON_WHEEL_UP:
 				camera.zoom *= 1.1
-			elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			else:
 				camera.zoom /= 1.1
 			camera.zoom = camera.zoom.clamp(Vector2(0.3, 0.3), Vector2(3.0, 3.0))
+
+			# World position under the mouse after zoom changed.
+			var mouse_world_after: Vector2 = camera.get_global_mouse_position()
+
+			# Shift camera so the same world point stays under the cursor.
+			camera.position += mouse_world_before - mouse_world_after
 
 
 func _on_border_toggle_pressed() -> void:

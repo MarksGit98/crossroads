@@ -50,6 +50,9 @@ var max_hp: int = 0
 var current_atk: int = 0
 var current_armor: int = 0
 var current_move_range: int = 0
+var attack_range: int = 1
+var attack_pattern: CardTypes.AttackPattern = CardTypes.AttackPattern.SINGLE_TARGET
+var damage_type: CardTypes.DamageType = CardTypes.DamageType.PHYSICAL
 
 # =============================================================================
 # Board State
@@ -115,6 +118,9 @@ func initialize(data: CardData, hex: Vector2i, hex_size: float) -> void:
 	max_hp = base_hp
 	current_armor = base_armor
 	current_move_range = data.move_range
+	attack_range = data.attack_range
+	attack_pattern = data.attack_pattern
+	damage_type = data.damage_type
 
 	# Initialize cooldowns for all actives at 0 (ready to use).
 	for i: int in range(data.actives.size()):
@@ -124,8 +130,8 @@ func initialize(data: CardData, hex: Vector2i, hex_size: float) -> void:
 	hex_position = hex
 	position = HexHelper.hex_to_world(hex, hex_size) + Vector2(0, HexTileRenderer.DEPTH_OFFSET)
 
-	# Z-order: creatures render above ground tiles at the same row.
-	z_index = hex.y * 2 + 1
+	# Z-order: creatures render above ground and middle tiles at the same row.
+	z_index = hex.y * 3 + 2
 
 	# Scale the creature to fit the hex based on sprite frame size.
 	_apply_creature_scale(hex_size)
@@ -304,6 +310,18 @@ func can_use_active(ability_index: int, context: Dictionary) -> bool:
 		if player == null or not player.can_afford(cost):
 			return false
 
+	# Effect-specific checks.
+	var effects: Array = ability.get("effects", [])
+	for effect: Dictionary in effects:
+		var effect_type: int = effect.get("type", -1)
+		if effect_type == CardTypes.EffectType.MARK_SPAWN:
+			# Don't allow marking a hex that is already a valid spawn location.
+			var grid: HexGrid = context.get("hex_grid")
+			if grid:
+				var tile: HexTileData = grid.get_tile(hex_position)
+				if tile and tile.valid_spawn:
+					return false
+
 	return true
 
 
@@ -397,15 +415,16 @@ func _matches_target_rule(tile: HexTileData, target_rule: int) -> bool:
 
 
 ## Apply a single effect from an active ability.
-func _apply_active_effect(_effect: Dictionary, _context: Dictionary) -> void:
-	# TODO: Dispatch to the effect system based on effect["type"].
-	# Example dispatch:
-	# var effect_type: int = _effect.get("type", -1)
-	# match effect_type:
-	#     CardTypes.EffectType.DEAL_DAMAGE:
-	#         var target_hexes: Array = _context.get("target_hexes", [])
-	#         ...
-	pass
+func _apply_active_effect(effect: Dictionary, context: Dictionary) -> void:
+	var effect_type: int = effect.get("type", -1)
+	match effect_type:
+		CardTypes.EffectType.MARK_SPAWN:
+			var grid: HexGrid = context.get("hex_grid")
+			if grid:
+				grid.mark_spawn(hex_position)
+		_:
+			# TODO: Dispatch remaining effect types (DEAL_DAMAGE, HEAL, etc.).
+			pass
 
 
 ## Tick down active cooldowns. Called at start of turn.
@@ -538,17 +557,20 @@ func get_aura_passives() -> Array[Dictionary]:
 # Combat
 # =============================================================================
 
-## Apply damage after armor reduction. Returns actual damage dealt.
-func take_damage(amount: int, damage_type: CardTypes.DamageType = CardTypes.DamageType.PHYSICAL) -> int:
-	var reduced: int = amount
-	if damage_type == CardTypes.DamageType.PHYSICAL:
-		reduced = maxi(amount - current_armor, 0)
-	current_hp -= reduced
-	damaged.emit(self, reduced)
+## Apply damage using consumable armor model. Armor absorbs damage first,
+## remaining damage hits HP. Returns total damage dealt (armor + HP).
+func take_damage(amount: int, p_damage_type: CardTypes.DamageType = CardTypes.DamageType.PHYSICAL) -> int:
+	var armor_absorbed: int = 0
+	if p_damage_type == CardTypes.DamageType.PHYSICAL and current_armor > 0:
+		armor_absorbed = mini(amount, current_armor)
+		current_armor -= armor_absorbed
+	var hp_damage: int = amount - armor_absorbed
+	current_hp -= hp_damage
+	damaged.emit(self, amount)
 
 	# Trigger ON_DAMAGED passives.
 	check_passive_triggers(CardTypes.TriggerType.ON_DAMAGED, {
-		"creature": self, "damage": reduced, "damage_type": damage_type,
+		"creature": self, "damage": amount, "damage_type": p_damage_type,
 	})
 
 	# Play hurt animation via state machine.
@@ -560,7 +582,74 @@ func take_damage(amount: int, damage_type: CardTypes.DamageType = CardTypes.Dama
 	if current_hp <= 0:
 		current_hp = 0
 		_on_death()
-	return reduced
+	return amount
+
+
+## Execute an attack against a target creature.
+## Walks to the target, plays attack animation, applies damage, walks back.
+## Does NOT consume movement — this is a cosmetic approach animation.
+## Returns the damage dealt.
+func perform_attack(target: Creature, hex_grid: HexGrid) -> int:
+	if not can_attack() or not target.is_alive():
+		return 0
+
+	has_attacked = true
+	var home_pos: Vector2 = position
+
+	# Flip sprite to face the target.
+	var dir: Vector2 = target.position - position
+	if animated_sprite and dir.x != 0.0:
+		animated_sprite.flip_h = dir.x < 0.0
+
+	# Walk to the target — stop adjacent to the target sprite.
+	var approach_offset: float = 30.0
+	var approach_pos: Vector2 = target.position + (home_pos - target.position).normalized() * approach_offset
+
+	if state_machine:
+		state_machine.play_walk()
+	var walk_tween: Tween = create_tween().set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_CUBIC)
+	walk_tween.tween_property(self, "position", approach_pos, 0.35)
+	await walk_tween.finished
+	if state_machine:
+		state_machine.stop_walking()
+
+	# Play attack animation and wait for the hit frame.
+	if state_machine:
+		state_machine.play_attack()
+		await state_machine.attack_hit
+
+	# Guard: target may have died from another source between anim start and hit.
+	var actual_damage: int = 0
+	if target.is_alive():
+		actual_damage = target.take_damage(current_atk, damage_type)
+
+		# If the target died, clear tile occupancy.
+		if not target.is_alive():
+			hex_grid.remove_creature(target.hex_position)
+
+	# Wait for attack animation to finish.
+	if state_machine and state_machine.current_state == CreatureStateMachine.State.ATTACKING:
+		await state_machine.animation_finished
+
+	# Walk back to home position.
+	if state_machine:
+		state_machine.play_walk()
+	# Flip sprite for the return trip.
+	if animated_sprite:
+		animated_sprite.flip_h = not animated_sprite.flip_h
+	var return_tween: Tween = create_tween().set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_CUBIC)
+	return_tween.tween_property(self, "position", home_pos, 0.35)
+	await return_tween.finished
+	if state_machine:
+		state_machine.stop_walking()
+
+	# Restore default sprite facing.
+	if is_enemy() and animated_sprite:
+		animated_sprite.flip_h = true
+	elif not is_enemy() and animated_sprite:
+		animated_sprite.flip_h = false
+
+	return actual_damage
 
 
 ## Restore HP, clamped to max.
@@ -617,7 +706,7 @@ func move_to(new_hex: Vector2i, hex_size: float) -> void:
 		state_machine.stop_walking()
 
 	# Update z-order for new row.
-	z_index = new_hex.y * 2 + 1
+	z_index = new_hex.y * 3 + 2
 
 	moved.emit(self, old_hex, new_hex)
 	check_passive_triggers(CardTypes.TriggerType.ON_MOVE, {
@@ -696,6 +785,21 @@ func can_attack() -> bool:
 ## Whether this creature is alive.
 func is_alive() -> bool:
 	return current_hp > 0
+
+
+## Whether this creature belongs to the enemy side.
+func is_enemy() -> bool:
+	return self is EnemyCreature
+
+
+## Whether this creature is hostile to another creature.
+func is_hostile_to(other: Creature) -> bool:
+	return is_enemy() != other.is_enemy()
+
+
+## Whether this creature is friendly to another creature.
+func is_friendly_to(other: Creature) -> bool:
+	return is_enemy() == other.is_enemy()
 
 
 # =============================================================================

@@ -33,6 +33,7 @@ var hex_grid: HexGrid
 var hand: Node2D  # The Hand node — checked via hand.is_targeting()
 var action_menu: CreatureActionMenu
 var camera: Camera2D
+var player: Player
 
 # =============================================================================
 # State
@@ -41,6 +42,7 @@ var camera: Camera2D
 var current_state: int = BoardState.IDLE
 var _selected_creature: Creature = null
 var _valid_targets: Array[Vector2i] = []
+var _active_ability_index: int = -1
 
 ## Whether the manager is enabled (accepts player input).
 ## Disabled during non-action phases (draw, end turn, enemy turn).
@@ -57,17 +59,19 @@ const ACTIVE_HIGHLIGHT_COLOR: Color = Color(0.8, 0.4, 1.0, 0.35)
 # =============================================================================
 
 ## Wire all dependencies. Called by the duel scene in _ready().
-func setup(p_grid: HexGrid, p_hand: Node2D, p_menu: CreatureActionMenu, p_camera: Camera2D) -> void:
+func setup(p_grid: HexGrid, p_hand: Node2D, p_menu: CreatureActionMenu, p_camera: Camera2D, p_player: Player = null) -> void:
 	hex_grid = p_grid
 	hand = p_hand
 	action_menu = p_menu
 	camera = p_camera
+	player = p_player
 
 	# Connect hex grid signals.
 	hex_grid.hex_clicked.connect(_on_hex_clicked)
 
 	# Connect action menu signals.
 	action_menu.action_selected.connect(_on_action_selected)
+	action_menu.active_ability_selected.connect(_on_active_ability_selected)
 	action_menu.menu_closed.connect(_on_menu_closed)
 
 
@@ -117,6 +121,11 @@ func _on_creature_clicked(creature: Creature) -> void:
 	if current_state == BoardState.EXECUTING:
 		return
 
+	# During attack targeting, clicking a creature means clicking its hex.
+	if current_state == BoardState.ATTACK_TARGETING:
+		_handle_attack_target_click(creature.hex_position)
+		return
+
 	# If already in an interaction, cancel it first.
 	if current_state != BoardState.IDLE:
 		_cancel_interaction()
@@ -125,9 +134,13 @@ func _on_creature_clicked(creature: Creature) -> void:
 	_selected_creature = creature
 	_transition_to(BoardState.CREATURE_SELECTED)
 
+	# Pre-compute whether this creature has valid attack targets.
+	var attack_targets: Array[Vector2i] = hex_grid.get_valid_attack_targets_for(creature)
+	var has_attack_targets: bool = not attack_targets.is_empty()
+
 	# Convert creature world position to screen position for the menu.
 	var screen_pos: Vector2 = _world_to_screen(creature.global_position)
-	action_menu.show_for_creature(creature, screen_pos)
+	action_menu.show_for_creature(creature, screen_pos, has_attack_targets, player, hex_grid)
 
 
 # =============================================================================
@@ -171,10 +184,16 @@ func _on_action_selected(action: StringName) -> void:
 			_enter_move_targeting()
 		&"attack":
 			_enter_attack_targeting()
-		&"active":
-			_enter_active_targeting()
 		_:
 			_cancel_interaction()
+
+
+## Called when the player picks a specific active ability button from the menu.
+func _on_active_ability_selected(ability_index: int) -> void:
+	if _selected_creature == null:
+		_cancel_interaction()
+		return
+	_enter_active_targeting(ability_index)
 
 
 func _on_menu_closed() -> void:
@@ -240,29 +259,112 @@ func _handle_move_target_click(coord: Vector2i) -> void:
 # =============================================================================
 
 func _enter_attack_targeting() -> void:
-	# TODO: Compute valid attack targets, highlight them, transition state.
-	# For now, cancel back to idle.
-	_cancel_interaction()
+	if _selected_creature == null or not _selected_creature.can_attack():
+		_cancel_interaction()
+		return
+
+	_valid_targets = hex_grid.get_valid_attack_targets_for(_selected_creature)
+	if _valid_targets.is_empty():
+		_cancel_interaction()
+		return
+
+	# Highlight valid attack targets in red.
+	var highlights: Dictionary = {}
+	for coord: Vector2i in _valid_targets:
+		highlights[coord] = ATTACK_HIGHLIGHT_COLOR
+	hex_grid.set_highlights(highlights)
+
+	_transition_to(BoardState.ATTACK_TARGETING)
 
 
-func _handle_attack_target_click(_coord: Vector2i) -> void:
-	# TODO: Execute attack against target on the clicked hex.
-	pass
+func _handle_attack_target_click(coord: Vector2i) -> void:
+	if coord not in _valid_targets:
+		return
+
+	var tile: HexTileData = hex_grid.get_tile(coord)
+	if tile == null or not tile.is_occupied():
+		return
+
+	var target: Creature = tile.occupant
+	var attacker: Creature = _selected_creature
+
+	# Execute the attack.
+	_transition_to(BoardState.EXECUTING)
+	hex_grid.clear_highlights()
+
+	await attacker.perform_attack(target, hex_grid)
+
+	_selected_creature = null
+	_valid_targets.clear()
+	_transition_to(BoardState.IDLE)
 
 
 # =============================================================================
-# Active Targeting (stub — future implementation)
+# Active Targeting
 # =============================================================================
 
-func _enter_active_targeting() -> void:
-	# TODO: Compute valid active targets, highlight them, transition state.
-	# For now, cancel back to idle.
-	_cancel_interaction()
+func _enter_active_targeting(ability_index: int) -> void:
+	if _selected_creature == null:
+		_cancel_interaction()
+		return
+
+	# Validate the requested ability is usable.
+	var context: Dictionary = {"player": player}
+	if not _selected_creature.can_use_active(ability_index, context):
+		_cancel_interaction()
+		return
+
+	_active_ability_index = ability_index
+	var ability: Dictionary = _selected_creature.card_data.actives[_active_ability_index]
+	var target_rule: int = ability.get("target_rule", CardTypes.TargetRule.ANY_HEX)
+
+	# SELF-targeting abilities execute immediately without a targeting phase.
+	if target_rule == CardTypes.TargetRule.SELF:
+		_execute_active_on_target(_selected_creature.hex_position)
+		return
+
+	# Compute valid targets and highlight them.
+	_valid_targets = _selected_creature.get_active_targets(_active_ability_index, hex_grid)
+	if _valid_targets.is_empty():
+		_cancel_interaction()
+		return
+
+	var highlights: Dictionary = {}
+	for coord: Vector2i in _valid_targets:
+		highlights[coord] = ACTIVE_HIGHLIGHT_COLOR
+	hex_grid.set_highlights(highlights)
+
+	_transition_to(BoardState.ACTIVE_TARGETING)
 
 
-func _handle_active_target_click(_coord: Vector2i) -> void:
-	# TODO: Execute active ability against the clicked hex.
-	pass
+func _handle_active_target_click(coord: Vector2i) -> void:
+	if coord not in _valid_targets:
+		return
+
+	_execute_active_on_target(coord)
+
+
+## Execute the selected active ability against a target hex.
+func _execute_active_on_target(coord: Vector2i) -> void:
+	_transition_to(BoardState.EXECUTING)
+	hex_grid.clear_highlights()
+
+	var context: Dictionary = {
+		"player": player,
+		"hex_grid": hex_grid,
+		"target_hex": coord,
+	}
+
+	_selected_creature.use_active(_active_ability_index, context)
+
+	# Wait a beat for the attack animation to play.
+	if _selected_creature.state_machine and _selected_creature.state_machine.current_state == CreatureStateMachine.State.ATTACKING:
+		await _selected_creature.state_machine.animation_finished
+
+	_selected_creature = null
+	_valid_targets.clear()
+	_active_ability_index = -1
+	_transition_to(BoardState.IDLE)
 
 
 # =============================================================================
@@ -276,6 +378,7 @@ func _cancel_interaction() -> void:
 	hex_grid.clear_highlights()
 	_selected_creature = null
 	_valid_targets.clear()
+	_active_ability_index = -1
 	_transition_to(BoardState.IDLE)
 
 

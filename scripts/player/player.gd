@@ -20,6 +20,7 @@ signal turn_ended(turn_number: int)
 const STARTING_MANA: int = 5
 const STARTING_HEALTH: int = 30
 const STARTING_ATTACK: int = 0
+const DEFAULT_MAX_CREATURES: int = 5
 
 # =============================================================================
 # Child References
@@ -43,6 +44,10 @@ var max_health: int = STARTING_HEALTH
 
 ## Current attack value (from equipped weapons, hero power, etc.).
 var current_attack: int = STARTING_ATTACK
+
+## Maximum number of friendly creatures allowed on the board at once.
+## Can be modified by cards, class abilities, or other effects.
+var max_creatures: int = DEFAULT_MAX_CREATURES
 
 ## Turn counter — incremented each time start_turn() is called.
 var turn_number: int = 0

@@ -10,13 +10,18 @@ var _spell_template: Texture2D = preload("res://sample images/Viking-Spell-Card-
 # Bake — use spell template instead of creature template
 # =============================================================================
 
-## Override: swap the CardBackground texture to the spell template.
+## Override: swap the CardBackground texture to the spell template, and
+## populate the description with full effect text + keywords + flavor.
 func _populate_layout(layout: Control, data: CardData) -> void:
 	# Replace the background with the spell card art.
 	var bg: TextureRect = layout.get_node_or_null("CardBackground")
 	if bg:
 		bg.texture = _spell_template
 	super._populate_layout(layout, data)
+	# Override the description label with full effect text built from card data.
+	var desc_label: Label = layout.get_node_or_null("DescriptionLabel")
+	if desc_label:
+		desc_label.text = CardDescriptionBuilder.build_spell_description(data)
 
 
 # =============================================================================
@@ -26,7 +31,11 @@ func _populate_layout(layout: Control, data: CardData) -> void:
 func can_play(context: Dictionary) -> bool:
 	if not super.can_play(context):
 		return false
-	# TODO: Validate spell-specific target existence when board is wired.
+	# Spells that need targeting must have at least one valid target on the board.
+	if needs_targeting():
+		var board: HexGrid = context.get("board")
+		if board and get_valid_targets(board).is_empty():
+			return false
 	return true
 
 

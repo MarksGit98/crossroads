@@ -9,7 +9,7 @@ static func data() -> CardData:
 	card.card_type = CardTypes.CardType.CREATURE
 	card.card_class = CardTypes.Class.VIKING
 	card.rarity = CardTypes.Rarity.RARE
-	card.flavor = "The runes speak, and reality bends."
+	card.flavor = "The runes speak, and reality bends. Can unleash Arcane Blast (2 mana: 3 MAGICAL AoE) or plant an Arcane Anchor to mark his hex as a summon point."
 
 	# Cost
 	card.cost_type = CardTypes.CostType.MANA
@@ -30,10 +30,12 @@ static func data() -> CardData:
 	card.keywords = [CardTypes.Keyword.RANGED]
 
 	# Actives — arcane blast: AoE damage on a targeted hex
+	#         — arcane anchor: mark current hex as a valid spawn location
 	card.actives = [
 		{
 			"id": "arcane_blast",
 			"name": "Arcane Blast",
+			"description": "Unleash a burst of arcane energy at a target hex, dealing 3 MAGICAL damage to all units within 1 hex.",
 			"cost": 2,
 			"range": 3,
 			"cooldown": 2,
@@ -45,6 +47,21 @@ static func data() -> CardData:
 					"damage_type": CardTypes.DamageType.MAGICAL,
 					"value": 3,
 					"aoe_radius": 1,
+				},
+			],
+		},
+		{
+			"id": "arcane_anchor",
+			"name": "Arcane Anchor",
+			"description": "Mark the Wizard's hex as a valid summon location. Allies may be summoned here in future turns.",
+			"cost": 0,
+			"range": 0,
+			"cooldown": 3,
+			"target_rule": CardTypes.TargetRule.SELF,
+			"effects": [
+				{
+					"type": CardTypes.EffectType.MARK_SPAWN,
+					"target": CardTypes.EffectTarget.CASTER,
 				},
 			],
 		},

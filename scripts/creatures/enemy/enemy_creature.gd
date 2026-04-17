@@ -60,6 +60,9 @@ func initialize_enemy(data: EnemyData, hex: Vector2i, hex_size: float) -> void:
 	max_hp = base_hp
 	current_armor = base_armor
 	current_move_range = data.move_range
+	attack_range = data.attack_range
+	attack_pattern = data.attack_pattern
+	damage_type = data.damage_type
 
 	# Initialize cooldowns for all actives at 0 (ready to use).
 	for i: int in range(data.actives.size()):
@@ -69,8 +72,8 @@ func initialize_enemy(data: EnemyData, hex: Vector2i, hex_size: float) -> void:
 	hex_position = hex
 	position = HexHelper.hex_to_world(hex, hex_size) + Vector2(0, HexTileRenderer.DEPTH_OFFSET)
 
-	# Z-order: creatures render above ground tiles at the same row.
-	z_index = hex.y * 2 + 1
+	# Z-order: creatures render above ground and middle tiles at the same row.
+	z_index = hex.y * 3 + 2
 
 	# Scale the creature to fit the hex.
 	_apply_creature_scale(hex_size)

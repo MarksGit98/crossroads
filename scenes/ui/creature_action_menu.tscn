@@ -22,8 +22,3 @@ theme_override_font_sizes/font_size = 13
 custom_minimum_size = Vector2(0, 28)
 text = "Attack"
 theme_override_font_sizes/font_size = 13
-
-[node name="ActiveButton" type="Button" parent="VBox"]
-custom_minimum_size = Vector2(0, 28)
-text = "Cast Active"
-theme_override_font_sizes/font_size = 13
