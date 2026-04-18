@@ -12,13 +12,11 @@ sprite_frames = ExtResource("3_frames")
 
 [node name="NameLabel" parent="." index="3" unique_id=145797761]
 offset_left = -31.0
-offset_top = -36.0
 offset_right = 29.0
-offset_bottom = -22.0
 
 [node name="HPLabel" parent="." index="4" unique_id=1282598892]
 offset_top = -24.0
 offset_bottom = -12.0
 
 [node name="CollisionShape2D" parent="ClickArea" parent_id_path=PackedInt32Array(1358188028) index="0" unique_id=469784076]
-position = Vector2(-1.75, -2.5)
+position = Vector2(-1, -2)

@@ -5,16 +5,16 @@
 
 [node name="Slime" unique_id=164043111 instance=ExtResource("1_base")]
 
-[node name="AnimatedSprite2D" parent="." index="0"]
+[node name="AnimatedSprite2D" parent="." index="0" unique_id=1056943193]
 sprite_frames = ExtResource("3_frames")
 
-[node name="NameLabel" parent="." index="3"]
+[node name="NameLabel" parent="." index="3" unique_id=938323789]
 offset_top = -28.0
 offset_bottom = -14.0
 
-[node name="HPLabel" parent="." index="4"]
+[node name="HPLabel" parent="." index="4" unique_id=755769429]
 offset_top = -16.0
 offset_bottom = -4.0
 
-[node name="CollisionShape2D" parent="ClickArea" index="0"]
-position = Vector2(-1.5, 1.5)
+[node name="CollisionShape2D" parent="ClickArea" parent_id_path=PackedInt32Array(932775425) index="0" unique_id=1123921904]
+position = Vector2(-1.5, 1.625)

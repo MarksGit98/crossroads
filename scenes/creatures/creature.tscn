@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" uid="uid://dfqr08upehbro" path="res://scripts/creatures/creature.gd" id="1_creature"]
 [ext_resource type="Script" uid="uid://8g20bm8ra6yn" path="res://scripts/creatures/creature_state_machine.gd" id="2_state_machine"]
+[ext_resource type="PackedScene" uid="uid://c0s4t8vkrstat" path="res://scenes/ui/creature_stats_bar.tscn" id="3_stats_bar"]
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_default"]
 animations = [{
@@ -167,3 +168,5 @@ monitorable = false
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="ClickArea" unique_id=469784076]
 shape = SubResource("RectangleShape2D_click")
+
+[node name="CreatureStatsBar" parent="." unique_id=2001001001 instance=ExtResource("3_stats_bar")]

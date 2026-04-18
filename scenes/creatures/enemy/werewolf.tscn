@@ -5,20 +5,20 @@
 
 [node name="Werewolf" unique_id=2068496570 instance=ExtResource("1_base")]
 
-[node name="AnimatedSprite2D" parent="." index="0"]
+[node name="AnimatedSprite2D" parent="." index="0" unique_id=1056943193]
 sprite_frames = ExtResource("3_frames")
 
-[node name="NameLabel" parent="." index="3"]
+[node name="NameLabel" parent="." index="3" unique_id=938323789]
 offset_left = -24.0
 offset_top = -32.0
 offset_right = 36.0
 offset_bottom = -18.0
 
-[node name="HPLabel" parent="." index="4"]
+[node name="HPLabel" parent="." index="4" unique_id=755769429]
 offset_left = -24.0
 offset_top = -21.0
 offset_right = 36.0
 offset_bottom = -9.0
 
-[node name="CollisionShape2D" parent="ClickArea" index="0"]
+[node name="CollisionShape2D" parent="ClickArea" parent_id_path=PackedInt32Array(932775425) index="0" unique_id=1123921904]
 position = Vector2(5.5, -1)

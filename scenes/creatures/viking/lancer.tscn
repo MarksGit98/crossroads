@@ -19,4 +19,4 @@ offset_top = -37.0
 offset_bottom = -25.0
 
 [node name="CollisionShape2D" parent="ClickArea" parent_id_path=PackedInt32Array(1358188028) index="0" unique_id=469784076]
-position = Vector2(0, -9)
+position = Vector2(0.453125, -7.25)

@@ -123,7 +123,7 @@ _data = {
 }
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_click"]
-size = Vector2(32, 20)
+size = Vector2(28.5, 20.25)
 
 [node name="Enemy" type="Node2D" unique_id=374012359]
 script = ExtResource("1_enemy")

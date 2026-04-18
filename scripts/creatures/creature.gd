@@ -15,6 +15,13 @@ signal died(creature: Creature)
 signal moved(creature: Creature, from_hex: Vector2i, to_hex: Vector2i)
 signal status_applied(creature: Creature, effect: CardTypes.StatusEffect)
 signal status_removed(creature: Creature, effect: CardTypes.StatusEffect)
+
+## Emitted whenever current_atk changes (modify_atk, buffs, debuffs).
+## Consumers like CreatureStatsBar use this to refresh the displayed value.
+signal atk_changed(creature: Creature, new_value: int)
+
+## Emitted whenever current_armor changes (modify_armor, take_damage absorption).
+signal armor_changed(creature: Creature, new_value: int)
 signal active_used(creature: Creature, ability_index: int)
 signal passive_triggered(creature: Creature, passive_index: int)
 signal clicked(creature: Creature)
@@ -95,8 +102,22 @@ var _active_cooldowns: Dictionary = {}
 ## Label showing creature name above the sprite.
 @onready var _name_label: Label = $NameLabel
 
-## Label showing current HP / max HP below the name label.
+## Legacy HP label — superseded by CreatureStatsBar. Kept as a scene node
+## for backward compatibility but hidden at startup.
 @onready var _hp_label: Label = $HPLabel
+
+## Overhead stats bar (name + icons + number labels). Lives as a child in
+## creature.tscn so the node is visible/editable in the Godot editor.
+## Its children (icons, labels) are still built programmatically in the
+## bar's own _ready() to keep layout constants centralized.
+## See scripts/ui/creature_stats_bar.gd and scenes/ui/creature_stats_bar.tscn.
+@onready var _stats_bar: CreatureStatsBar = $CreatureStatsBar
+
+## Desired gap in screen pixels between the top edge of the creature's
+## collision shape and the center of the stats bar. Negative means "above".
+## This is converted to local space via the creature's current scale so the
+## gap remains constant regardless of how the creature is scaled to fit a hex.
+const STATS_BAR_WORLD_GAP: float = -12.0
 
 
 # =============================================================================
@@ -168,26 +189,21 @@ func _connect_click_area() -> void:
 # Overhead Labels
 # =============================================================================
 
-## Populate the overhead name and HP labels with current values.
+## Configure the overhead stats bar (added in creature.tscn at editor time)
+## and hide the legacy NameLabel/HPLabel — the stats bar owns all overhead
+## display now.
 func _create_overhead_labels() -> void:
 	if _name_label:
-		_name_label.text = creature_name
-	_update_hp_label()
-
-	# Connect signals to auto-update the HP label.
-	damaged.connect(_on_hp_changed)
-	healed.connect(_on_hp_changed)
-
-
-## Update the HP label text.
-func _update_hp_label() -> void:
+		_name_label.visible = false
 	if _hp_label:
-		_hp_label.text = "%d / %d" % [current_hp, max_hp]
+		_hp_label.visible = false
 
-
-## Called when HP changes from damage or healing.
-func _on_hp_changed(_creature: Creature, _amount: int) -> void:
-	_update_hp_label()
+	if _stats_bar:
+		_stats_bar.set_creature(self)
+		# Counter the creature's scale so icons and labels render at native
+		# pixel size, and position the bar above the collision shape in
+		# world-space pixels.
+		_apply_stats_bar_inverse_scale()
 
 
 # =============================================================================
@@ -242,6 +258,34 @@ func _apply_label_inverse_scale() -> void:
 		_name_label.scale = inv
 	if _hp_label:
 		_hp_label.scale = inv
+	_apply_stats_bar_inverse_scale()
+
+
+## Counter the parent's scale on the stats bar (so icons/labels render at
+## consistent pixel size across creatures of different scale factors) and
+## position the bar a fixed screen-pixel gap above the top of the creature's
+## collision shape. This way taller creatures get the bar higher and shorter
+## creatures get it lower — it always hugs the sprite regardless of art size.
+func _apply_stats_bar_inverse_scale() -> void:
+	if _stats_bar == null:
+		return
+	var inv: Vector2 = Vector2(1.0 / scale.x, 1.0 / scale.y)
+	_stats_bar.scale = inv
+
+	# Compute the top edge of the click area's collision shape in local space.
+	# Fallback to a reasonable default if the shape isn't available yet.
+	var collision_top_local: float = -20.0
+	if click_area:
+		var shape_node: CollisionShape2D = click_area.get_node_or_null("CollisionShape2D")
+		if shape_node and shape_node.shape is RectangleShape2D:
+			var rect: RectangleShape2D = shape_node.shape
+			# Top-of-shape Y = shape node's local Y minus half its height.
+			collision_top_local = shape_node.position.y - rect.size.y * 0.5
+
+	# Convert the desired screen-pixel gap to local space. scale.y > 0 is
+	# guaranteed after _apply_creature_scale() runs.
+	var gap_local: float = STATS_BAR_WORLD_GAP / scale.y
+	_stats_bar.position = Vector2(0.0, collision_top_local + gap_local)
 
 
 ## Read the width of the first idle animation frame to determine sprite size.
@@ -572,6 +616,7 @@ func take_damage(amount: int, p_damage_type: CardTypes.DamageType = CardTypes.Da
 	if p_damage_type == CardTypes.DamageType.PHYSICAL and current_armor > 0:
 		armor_absorbed = mini(amount, current_armor)
 		current_armor -= armor_absorbed
+		armor_changed.emit(self, current_armor)
 	var hp_damage: int = amount - armor_absorbed
 	current_hp -= hp_damage
 	damaged.emit(self, amount)
@@ -674,11 +719,13 @@ func heal(amount: int) -> void:
 ## Modify ATK by a delta (positive = buff, negative = debuff).
 func modify_atk(delta: int) -> void:
 	current_atk = maxi(current_atk + delta, 0)
+	atk_changed.emit(self, current_atk)
 
 
 ## Modify armor by a delta.
 func modify_armor(delta: int) -> void:
 	current_armor = maxi(current_armor + delta, 0)
+	armor_changed.emit(self, current_armor)
 
 
 # =============================================================================

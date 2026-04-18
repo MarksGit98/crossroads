@@ -58,6 +58,11 @@ var _selected_creature: Creature = null
 var _valid_targets: Array[Vector2i] = []
 var _active_ability_index: int = -1
 
+## Shared targeting arrow, spawned once in setup() and kept as a sibling of
+## the creatures node so it renders in world space. Driven by _process()
+## whenever we're in a targeting state.
+var _arrow: TargetingArrow = null
+
 ## Whether the manager is enabled (accepts player input).
 ## Disabled during non-action phases (draw, end turn, enemy turn).
 var _enabled: bool = true
@@ -88,6 +93,12 @@ func setup(p_ctx: DuelContext, p_menu: CreatureActionMenu, p_camera: Camera2D) -
 	action_menu.active_ability_selected.connect(_on_active_ability_selected)
 	action_menu.menu_closed.connect(_on_menu_closed)
 
+	# Spawn the targeting arrow as a sibling of the creatures node so it
+	# renders in world space above hex tiles and creatures.
+	_arrow = TargetingArrow.new()
+	var world_parent: Node = ctx.creatures_node.get_parent() if ctx.creatures_node else self
+	world_parent.add_child(_arrow)
+
 
 ## Register a creature's signals so the manager can respond to clicks.
 ## Call this whenever a new creature is spawned on the board.
@@ -99,6 +110,24 @@ func register_creature(creature: Creature) -> void:
 # =============================================================================
 # Input
 # =============================================================================
+
+## Drive the targeting arrow every frame while we're in a targeting state.
+## Source = selected creature's world position, target = mouse world position,
+## validity = whether the hex under the mouse is in _valid_targets.
+func _process(_delta: float) -> void:
+	if _arrow == null or _selected_creature == null or camera == null:
+		return
+
+	match current_state:
+		BoardState.MOVE_TARGETING, BoardState.ATTACK_TARGETING, BoardState.ACTIVE_TARGETING:
+			var mouse_world: Vector2 = camera.get_global_mouse_position()
+			var hovered_coord: Vector2i = HexHelper.world_to_hex(mouse_world, hex_grid.hex_size)
+			var is_valid: bool = hovered_coord in _valid_targets
+			_arrow.show_arrow(_selected_creature.global_position, mouse_world, is_valid)
+		_:
+			if _arrow.is_showing():
+				_arrow.hide_arrow()
+
 
 ## Handle ESC and right-click to cancel the current interaction.
 func _unhandled_input(event: InputEvent) -> void:
@@ -247,6 +276,8 @@ func _handle_move_target_click(coord: Vector2i) -> void:
 	# Execute the move.
 	_transition_to(BoardState.EXECUTING)
 	hex_grid.clear_highlights()
+	if _arrow:
+		_arrow.hide_arrow()
 
 	# Update tile occupancy.
 	var old_tile: HexTileData = hex_grid.get_tile(_selected_creature.hex_position)
@@ -305,6 +336,8 @@ func _handle_attack_target_click(coord: Vector2i) -> void:
 	# Execute the attack.
 	_transition_to(BoardState.EXECUTING)
 	hex_grid.clear_highlights()
+	if _arrow:
+		_arrow.hide_arrow()
 
 	await attacker.perform_attack(target, hex_grid)
 
@@ -361,6 +394,8 @@ func _handle_active_target_click(coord: Vector2i) -> void:
 func _execute_active_on_target(coord: Vector2i) -> void:
 	_transition_to(BoardState.EXECUTING)
 	hex_grid.clear_highlights()
+	if _arrow:
+		_arrow.hide_arrow()
 
 	# Stamp the target hex on the context so effects can read it uniformly
 	# with how hand-played spell targets are passed.
@@ -387,6 +422,8 @@ func _cancel_interaction() -> void:
 	if action_menu.is_open():
 		action_menu.hide_menu()
 	hex_grid.clear_highlights()
+	if _arrow:
+		_arrow.hide_arrow()
 	_selected_creature = null
 	_valid_targets.clear()
 	_active_ability_index = -1

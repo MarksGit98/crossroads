@@ -18,9 +18,7 @@ offset_bottom = -20.0
 
 [node name="HPLabel" parent="." index="4" unique_id=1282598892]
 offset_left = -28.0
-offset_top = -22.0
 offset_right = 32.0
-offset_bottom = -10.0
 
 [node name="CollisionShape2D" parent="ClickArea" parent_id_path=PackedInt32Array(1358188028) index="0" unique_id=469784076]
-position = Vector2(2.375, -0.75)
+position = Vector2(4.90625, -2)
