@@ -57,6 +57,15 @@ offset_bottom = 90.0
 theme_override_font_sizes/font_size = 14
 text = "Toggle Hex Borders"
 
+[node name="DevModeToggle" type="Button" parent="UILayer" unique_id=689575131]
+offset_left = 20.0
+offset_top = 100.0
+offset_right = 200.0
+offset_bottom = 130.0
+theme_override_font_sizes/font_size = 14
+text = "Dev Mode: OFF"
+toggle_mode = true
+
 [node name="EndTurnButton" type="Button" parent="UILayer" unique_id=960283623]
 anchors_preset = 3
 anchor_left = 1.0

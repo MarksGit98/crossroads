@@ -19,12 +19,10 @@ static func data() -> CardData:
 	card.target_rule = CardTypes.TargetRule.ANY_ALLY
 	card.spell_range = 1
 
-	# Passives — +2 ATK while equipped
-	card.passives = [
+	# Equip modifiers — +2 ATK while equipped.
+	card.equip_modifiers = [
 		{
-			"id": "runic_might",
-			"name": "Runic Might",
-			"type": CardTypes.PassiveType.STAT_AURA,
+			"type": CardTypes.EquipModifierType.MODIFY_STAT,
 			"stat": CardTypes.Stat.ATK,
 			"value": 2,
 		},

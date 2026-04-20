@@ -1,4 +1,4 @@
-[gd_scene format=3 uid="uid://cx7nm4rtaxdmr"]
+[gd_scene format=3 uid="uid://bx486sijqey72"]
 
 [ext_resource type="PackedScene" uid="uid://dhmnojgcubeqc" path="res://scenes/creatures/creature.tscn" id="1_base"]
 [ext_resource type="Script" uid="uid://cbw8skgcjltof" path="res://scripts/creatures/viking_creature.gd" id="2_script"]
@@ -6,11 +6,13 @@
 
 [node name="AxedMarauder" unique_id=741923001 instance=ExtResource("1_base")]
 script = ExtResource("2_script")
-## Lower than the default 2.5 because the AxeWarrior source frames are tight
-## (~80px wide) — the creature-scale math divides hex_diameter by frame_width
-## so a tight frame produces a large base_scale. 1.3 brings him visually in
-## line with other Viking creatures whose frames are ~100-128px.
-sprite_scale_factor = 1.3
+## Renders ~120px tall so he reads as a scrappy medium-sized unit compared
+## to the 180px default. Absolute-pixel targeting — just the number of
+## pixels he should occupy vertically; width falls out of the aspect ratio.
+target_display_height = 120.0
 
 [node name="AnimatedSprite2D" parent="." index="0" unique_id=48825108]
 sprite_frames = ExtResource("3_frames")
+
+[node name="CollisionShape2D" parent="ClickArea" parent_id_path=PackedInt32Array(1358188028) index="0" unique_id=469784076]
+position = Vector2(-3.6875, 13.25)

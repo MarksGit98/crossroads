@@ -72,6 +72,11 @@ const MOVE_HIGHLIGHT_COLOR: Color = Color(0.2, 0.7, 1.0, 0.35)
 const ATTACK_HIGHLIGHT_COLOR: Color = Color(1.0, 0.3, 0.2, 0.35)
 const ACTIVE_HIGHLIGHT_COLOR: Color = Color(0.8, 0.4, 1.0, 0.35)
 
+## Soft-white highlight on the hex of the currently-selected creature.
+## Applied when the action menu opens and kept layered under any range
+## previews the player triggers by hovering menu buttons.
+const SELECTED_CREATURE_HIGHLIGHT_COLOR: Color = Color(1.0, 1.0, 1.0, 0.28)
+
 
 # =============================================================================
 # Setup
@@ -92,6 +97,10 @@ func setup(p_ctx: DuelContext, p_menu: CreatureActionMenu, p_camera: Camera2D) -
 	action_menu.action_selected.connect(_on_action_selected)
 	action_menu.active_ability_selected.connect(_on_active_ability_selected)
 	action_menu.menu_closed.connect(_on_menu_closed)
+	# Hover-to-preview: show the action's range while the player hovers
+	# its button, clear back to the selected-creature highlight on exit.
+	action_menu.action_button_hovered.connect(_on_action_button_hovered)
+	action_menu.action_button_unhovered.connect(_on_action_button_unhovered)
 
 	# Spawn the targeting arrow as a sibling of the creatures node so it
 	# renders in world space above hex tiles and creatures.
@@ -176,6 +185,12 @@ func _on_creature_clicked(creature: Creature) -> void:
 	# Select this creature and show the action menu.
 	_selected_creature = creature
 	_transition_to(BoardState.CREATURE_SELECTED)
+
+	# Paint just the creature's own hex so the player sees which unit is
+	# selected without cluttering the board with neighbor-range highlights.
+	# The menu's hover handlers overlay ability/move/attack ranges on top
+	# while the mouse is over each button.
+	_paint_selection_highlight()
 
 	# Pre-compute whether this creature has valid attack targets.
 	var attack_targets: Array[Vector2i] = hex_grid.get_valid_attack_targets_for(creature)
@@ -420,6 +435,53 @@ func _execute_active_on_target(coord: Vector2i) -> void:
 # =============================================================================
 # Cancel / Reset
 # =============================================================================
+
+# =============================================================================
+# Selection highlight + hover-to-preview
+# =============================================================================
+
+## Paint the currently-selected creature's hex in the "selected" soft-white
+## color. No other hexes are highlighted at this stage — range previews are
+## layered on top while the player hovers action-menu buttons.
+func _paint_selection_highlight() -> void:
+	if _selected_creature == null:
+		return
+	var highlights: Dictionary = {}
+	highlights[_selected_creature.hex_position] = SELECTED_CREATURE_HIGHLIGHT_COLOR
+	hex_grid.set_highlights(highlights)
+
+
+## Handle the action menu's hover signal. Paints the action's full range
+## on top of the selected-creature highlight so the player sees reach at
+## a glance before clicking the button.
+func _on_action_button_hovered(kind: StringName, ability_index: int) -> void:
+	if _selected_creature == null or current_state != BoardState.CREATURE_SELECTED:
+		return
+
+	var highlights: Dictionary = {}
+	# Always keep the creature's own hex lit so it stays visually selected.
+	highlights[_selected_creature.hex_position] = SELECTED_CREATURE_HIGHLIGHT_COLOR
+
+	match kind:
+		&"move":
+			for coord: Vector2i in hex_grid.get_valid_moves_for(_selected_creature):
+				highlights[coord] = MOVE_HIGHLIGHT_COLOR
+		&"attack":
+			for coord: Vector2i in hex_grid.get_valid_attack_targets_for(_selected_creature):
+				highlights[coord] = ATTACK_HIGHLIGHT_COLOR
+		&"active":
+			for coord: Vector2i in _selected_creature.get_active_targets(ability_index, hex_grid):
+				highlights[coord] = ACTIVE_HIGHLIGHT_COLOR
+
+	hex_grid.set_highlights(highlights)
+
+
+## Clear the range preview and revert to just the creature's own hex.
+func _on_action_button_unhovered() -> void:
+	if _selected_creature == null or current_state != BoardState.CREATURE_SELECTED:
+		return
+	_paint_selection_highlight()
+
 
 ## Cancel any active interaction and return to idle.
 func _cancel_interaction() -> void:

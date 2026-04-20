@@ -124,7 +124,7 @@ _data = {
 }
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_click"]
-size = Vector2(16.75, 19)
+size = Vector2(47.375, 63.5)
 
 [node name="Creature" type="Node2D" unique_id=810019056]
 script = ExtResource("1_creature")

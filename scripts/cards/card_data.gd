@@ -74,6 +74,63 @@ extends Resource
 # --- Spell effects (top-level for spell cards) ---
 @export var effects: Array[Dictionary] = []
 
+# --- Equipment modifiers (only meaningful on EQUIPMENT cards) ---
+##
+## What the equip DOES to the creature it attaches to. Parsed by
+## EquipCard._apply_modifiers() on attach (direction = BUFF) and detach
+## (direction = DEBUFF, values flipped).
+##
+## Each entry is either:
+##   A) Variant-grouped — { "regular": {...}, "upgraded": {...} } — so an
+##      upgraded equip can specify bigger / different bonuses.
+##   B) Flat — the dict IS the modifier directly.
+##
+## Modifier schema (every entry is one of these shapes):
+##
+##   Stat bonus — additive delta applied while equipped:
+##     { "type": CardTypes.EquipModifierType.MODIFY_STAT,
+##       "stat": CardTypes.Stat.ATK / HP / ARMOR / MOVE_RANGE / ATTACK_RANGE,
+##       "value": int }
+##
+##   Status applied on equip, removed on unequip:
+##     { "type": CardTypes.EquipModifierType.APPLY_STATUS,
+##       "status": CardTypes.StatusEffect.HASTED / SHIELDED / ...,
+##       "duration": int (optional; -1 = permanent while equipped, default -1) }
+##
+##   Status cleansed on equip (one-shot, not re-applied on unequip):
+##     { "type": CardTypes.EquipModifierType.REMOVE_STATUS,
+##       "status": CardTypes.StatusEffect.CHILLED / STUNNED / ... }
+##
+## Positive values for stat modifiers = buffs; negative = debuffs. Equipment
+## can mix both in a single card (e.g. "+3 ATK, -1 MOVE_RANGE" for a heavy
+## weapon that slows the wielder).
+@export var equip_modifiers: Array[Dictionary] = []
+
+# --- Equipment rules (only meaningful on EQUIPMENT cards) ---
+##
+## Optional restrictions on which creatures this equip card is allowed to
+## attach to. Left empty = the default "valid for all friendly creatures".
+##
+## Schema (all fields optional — present-and-nonempty means "enforce"):
+##   "allowed_classes":    Array[CardTypes.Class]        — creature's card_class must be one of these
+##   "allowed_roles":      Array[CardTypes.CreatureRole] — creature's role must be one of these
+##   "required_keywords":  Array[CardTypes.Keyword]      — creature must have EVERY listed keyword
+##   "forbidden_keywords": Array[CardTypes.Keyword]      — creature must have NONE of these keywords
+##   "min_atk":            int                           — creature's base ATK at least N
+##   "max_atk":            int                           — creature's base ATK at most N
+##
+## Example (a sword that only Viking strikers can wield):
+##   card.equip_rules = {
+##       "allowed_classes": [CardTypes.Class.VIKING],
+##       "allowed_roles":   [CardTypes.CreatureRole.STRIKER],
+##   }
+##
+## Example (armor not wearable by ethereal units):
+##   card.equip_rules = {
+##       "forbidden_keywords": [CardTypes.Keyword.ETHEREAL],
+##   }
+@export var equip_rules: Dictionary = {}
+
 
 # =============================================================================
 # Variant resolution

@@ -32,8 +32,25 @@ signal unhovered(creature: Creature)
 # Identity (set once on spawn from CardData)
 # =============================================================================
 
-## Scale multiplier applied on top of hex-fitted base scale.
-## Tune per-creature in sub-scenes if some creatures should appear larger/smaller.
+## Target on-screen height for this creature's rendered sprite, in pixels.
+## The creature is uniformly scaled so that its idle-frame HEIGHT matches
+## this value, regardless of the source art's native resolution. This keeps
+## visuals consistent when combining assets from different artists /
+## packs / resolutions — the only knob per-creature is "how tall should
+## this unit look on the board".
+##
+## Override in specific creature scenes: small scrappy units ~120,
+## standard humanoids ~180-220, large bosses ~260-300.
+##
+## Note: this is decoupled from hex_size intentionally. If we later need
+## creatures to scale with board zoom, we can multiply this by a global
+## board-scale factor in _apply_creature_scale().
+@export var target_display_height: float = 180.0
+
+## Legacy multiplier kept for backward compat with scenes that still set
+## sprite_scale_factor. Ignored by the new absolute-height scaling path
+## but harmless to leave exported. Will be removed once every creature
+## scene migrates to target_display_height.
 @export var sprite_scale_factor: float = 2.5
 
 ## The card data this creature was summoned from.
@@ -101,6 +118,19 @@ var is_upgraded: bool = false
 ## Example: Axed Marauder spawns with `{"axed_marauder_axe": 2}` (or 3 when
 ## upgraded). can_use_active() gates the throw on count > 0.
 var deployable_charges: Dictionary = {}
+
+## Maximum number of equipment cards that can be attached to this creature
+## at once. Default 2; subclasses or spawned creature types can override.
+## Exposed so future balance changes (a "Quartermaster" card grants +1 slot,
+## an "Overburdened" status removes slots) can mutate it at runtime.
+@export var equipment_slots: int = 2
+
+## CardData for every equipment currently attached to this creature.
+## Populated by EquipCard.attach(), queried by can_accept_equip() to gate
+## slot availability, and iterable for future UI / "destroy equipment"
+## effects. Stored as CardData (not Card nodes) since Card nodes get
+## queue_freed after play — the data is what we actually care about.
+var equipped_items: Array[CardData] = []
 
 ## The sprite's resting flip_h value, captured at init. `perform_attack()`
 ## flips the sprite to face its target mid-attack, then restores this value
@@ -312,16 +342,23 @@ func _on_click_area_mouse_exited() -> void:
 
 ## Scale the creature node to fit the hex grid based on sprite frame dimensions.
 ## Uses hex_size to compute a base scale, then multiplies by sprite_scale_factor.
-func _apply_creature_scale(hex_size: float) -> void:
-	var frame_width: float = _get_frame_width()
-	if frame_width <= 0.0:
-		# No frame data — apply scale factor directly.
-		scale = Vector2(sprite_scale_factor, sprite_scale_factor)
+## Scale the creature so its rendered sprite matches target_display_height
+## exactly (uniform scale, so the width is whatever falls out of the aspect
+## ratio). Decouples on-board size from source-art resolution so assets
+## from different packs / artists all land at the same consistent size.
+##
+## The `hex_size` parameter is unused by the current absolute-pixel path
+## but kept in the signature so callers that used to pass it (various
+## init functions) don't have to change.
+func _apply_creature_scale(_hex_size: float) -> void:
+	var frame_height: float = _get_frame_height()
+	if frame_height <= 0.0:
+		# No frame data to measure — fall back to no scaling so the sprite
+		# at least renders at its native size instead of disappearing.
+		scale = Vector2.ONE
 		_apply_label_inverse_scale()
 		return
-	var hex_diameter: float = hex_size * 2.0
-	var base_scale: float = hex_diameter / frame_width
-	var final_scale: float = base_scale * sprite_scale_factor
+	var final_scale: float = target_display_height / frame_height
 	scale = Vector2(final_scale, final_scale)
 	_apply_label_inverse_scale()
 
@@ -365,15 +402,26 @@ func _apply_stats_bar_inverse_scale() -> void:
 
 ## Read the width of the first idle animation frame to determine sprite size.
 func _get_frame_width() -> float:
+	var tex: Texture2D = _get_idle_frame_texture()
+	return tex.get_width() if tex else 0.0
+
+
+## Read the height of the first idle animation frame. Used by the size cap
+## in _apply_creature_scale() to prevent tall sprites from dwarfing the board.
+func _get_frame_height() -> float:
+	var tex: Texture2D = _get_idle_frame_texture()
+	return tex.get_height() if tex else 0.0
+
+
+## Return the first frame texture of the idle animation, or null if not available.
+func _get_idle_frame_texture() -> Texture2D:
 	if not animated_sprite or not animated_sprite.sprite_frames:
-		return 0.0
-	if animated_sprite.sprite_frames.has_animation(&"idle"):
-		var frame_count: int = animated_sprite.sprite_frames.get_frame_count(&"idle")
-		if frame_count > 0:
-			var texture: Texture2D = animated_sprite.sprite_frames.get_frame_texture(&"idle", 0)
-			if texture:
-				return texture.get_width()
-	return 0.0
+		return null
+	if not animated_sprite.sprite_frames.has_animation(&"idle"):
+		return null
+	if animated_sprite.sprite_frames.get_frame_count(&"idle") <= 0:
+		return null
+	return animated_sprite.sprite_frames.get_frame_texture(&"idle", 0)
 
 
 ## Called at the start of the owning player's turn.
@@ -647,6 +695,73 @@ func upgrade() -> void:
 func refresh_stats_bar() -> void:
 	if _stats_bar:
 		_stats_bar.refresh()
+
+
+# =============================================================================
+# Equipment acceptance
+# =============================================================================
+# Two-layer gate (both must pass for an equip card to target this creature):
+#   1. matches_equip_rules(equip_data.equip_rules) — CARD says "this
+#      creature qualifies based on my equip_rules dict" (class/role/keyword).
+#   2. can_accept_equip(equip_data) — CREATURE says "I have an open
+#      slot / I'm not otherwise refusing equipment right now".
+# EquipCard.get_valid_targets() and EquipCard.can_play() call both in order.
+
+## Whether this creature meets the card-side equip_rules (class / role /
+## required keywords / forbidden keywords / ATK band). Empty rules → true.
+func matches_equip_rules(rules: Dictionary) -> bool:
+	if rules == null or rules.is_empty():
+		return true
+
+	# Allowed classes.
+	if rules.has("allowed_classes"):
+		var classes: Array = rules["allowed_classes"]
+		if not classes.is_empty():
+			var my_class: int = card_data.card_class if card_data else -1
+			if my_class not in classes:
+				return false
+
+	# Allowed roles.
+	if rules.has("allowed_roles"):
+		var roles: Array = rules["allowed_roles"]
+		if not roles.is_empty():
+			var my_role: int = card_data.role if card_data else -1
+			if my_role not in roles:
+				return false
+
+	var my_keywords: Array = card_data.keywords if card_data else []
+
+	# Required keywords (creature must have ALL).
+	if rules.has("required_keywords"):
+		for kw: int in rules["required_keywords"]:
+			if kw not in my_keywords:
+				return false
+
+	# Forbidden keywords (creature must have NONE).
+	if rules.has("forbidden_keywords"):
+		for kw: int in rules["forbidden_keywords"]:
+			if kw in my_keywords:
+				return false
+
+	# ATK band (on base ATK, not current — so buffs don't retroactively
+	# qualify a creature for a card meant for heavy hitters).
+	if rules.has("min_atk") and base_atk < int(rules["min_atk"]):
+		return false
+	if rules.has("max_atk") and base_atk > int(rules["max_atk"]):
+		return false
+
+	return true
+
+
+## Whether this creature can accept an additional piece of equipment right
+## now. Default policy: equipped_items count must be below equipment_slots.
+## Subclasses / status effects can override for per-creature veto rules.
+func can_accept_equip(_equip_data: CardData) -> bool:
+	if equipped_items.size() >= equipment_slots:
+		return false
+	# Room for future per-creature veto logic: e.g. some creatures are
+	# immune to curses, some statuses disarm, etc. For now only slot-cap.
+	return true
 
 
 ## Wait for a signal to fire, but bail out after `timeout_sec` to prevent
@@ -1498,6 +1613,30 @@ func modify_atk(delta: int) -> void:
 func modify_armor(delta: int) -> void:
 	current_armor = maxi(current_armor + delta, 0)
 	armor_changed.emit(self, current_armor)
+
+
+## Modify the creature's max HP by a delta. Current HP scales with it so
+## a full-health creature gaining +3 HP ends up at current=max+3 (not
+## sitting at old max). Negative deltas clamp current HP to the new max,
+## and trigger death if max drops to 0 or below.
+func modify_hp(delta: int) -> void:
+	max_hp = maxi(max_hp + delta, 0)
+	current_hp = clampi(current_hp + delta, 0, max_hp)
+	if current_hp <= 0:
+		current_hp = 0
+		_on_death()
+
+
+## Modify the creature's base move range by a delta. Used by equipment and
+## buffs that alter movement (e.g. "Boots of Swiftness: +1 move range").
+func modify_move_range(delta: int) -> void:
+	current_move_range = maxi(current_move_range + delta, 0)
+
+
+## Modify the creature's attack range by a delta. Used by equipment that
+## extends a melee unit's reach (e.g. "Longspear: +1 attack range").
+func modify_attack_range(delta: int) -> void:
+	attack_range = maxi(attack_range + delta, 0)
 
 
 # =============================================================================

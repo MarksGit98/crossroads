@@ -19,12 +19,10 @@ static func data() -> CardData:
 	card.target_rule = CardTypes.TargetRule.ANY_ALLY
 	card.spell_range = 1
 
-	# Passives — +3 armor while equipped
-	card.passives = [
+	# Equip modifiers — +3 armor while equipped.
+	card.equip_modifiers = [
 		{
-			"id": "iron_defense",
-			"name": "Iron Defense",
-			"type": CardTypes.PassiveType.STAT_AURA,
+			"type": CardTypes.EquipModifierType.MODIFY_STAT,
 			"stat": CardTypes.Stat.ARMOR,
 			"value": 3,
 		},

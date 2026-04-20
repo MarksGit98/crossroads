@@ -7,6 +7,7 @@ extends Node2D
 @onready var creatures_node: Node2D = $Creatures
 @onready var info_label: Label = $UILayer/InfoLabel
 @onready var border_toggle: Button = $UILayer/BorderToggle
+@onready var dev_mode_toggle: Button = $UILayer/DevModeToggle
 @onready var end_turn_button: Button = $UILayer/EndTurnButton
 @onready var turn_label: Label = $UILayer/TurnLabel
 @onready var camera: Camera2D = $Camera2D
@@ -75,6 +76,13 @@ func _ready() -> void:
 	hex_grid.hex_hovered.connect(_on_hex_hovered)
 	border_toggle.pressed.connect(_on_border_toggle_pressed)
 	end_turn_button.pressed.connect(_on_end_turn_pressed)
+	# Dev mode toggle button — mirrors the global DevMode autoload flag so
+	# the user can flip it with a click OR with F9. button_pressed.set syncs
+	# the visual toggle state, and we listen to DevMode.changed so keyboard
+	# toggles also update the button.
+	dev_mode_toggle.toggled.connect(_on_dev_mode_toggle_changed)
+	DevMode.changed.connect(_on_dev_mode_state_synced)
+	_on_dev_mode_state_synced(DevMode.enabled)
 
 	# Tell the hex grid where to parent spawned creatures.
 	hex_grid.creature_parent = creatures_node
@@ -209,18 +217,19 @@ func _on_hex_clicked(coord: Vector2i) -> void:
 		coord.x, coord.y, terrain_name, passable_name, los_name, elevation_name, occupant_text
 	]
 
-	# Don't overwrite highlights when the hand or interaction manager owns them.
-	if not hand.is_targeting() and not _interaction_manager.is_busy():
-		var highlights: Dictionary = {}
-		var neighbors: Array[Vector2i] = HexHelper.hex_neighbors(coord)
-		for n: Vector2i in neighbors:
-			if hex_grid.is_in_bounds(n):
-				highlights[n] = Color(0.3, 0.5, 1.0, 0.25)
+	# Only paint inspect-highlights on EMPTY hexes and only when nothing
+	# else owns the highlight layer (hand targeting, move/attack targeting,
+	# selected-creature outline). For creature-occupied hexes the board
+	# interaction manager handles its own "selected creature" highlight
+	# so we don't stomp over it here.
+	if hand.is_targeting() or _interaction_manager.is_busy():
+		return
+	if tile.is_occupied():
+		return
 
-		# Highlight the selected hex itself in white
-		highlights[coord] = Color(1.0, 1.0, 1.0, 0.2)
-
-		hex_grid.set_highlights(highlights)
+	var highlights: Dictionary = {}
+	highlights[coord] = Color(1.0, 1.0, 1.0, 0.2)
+	hex_grid.set_highlights(highlights)
 
 
 func _on_hex_hovered(coord: Vector2i) -> void:
@@ -262,6 +271,24 @@ func _on_border_toggle_pressed() -> void:
 	var new_state: bool = not hex_grid.are_borders_visible()
 	hex_grid.set_borders_visible(new_state)
 	border_toggle.text = "Hide Hex Borders" if new_state else "Show Hex Borders"
+
+
+## Called when the user clicks the dev-mode toggle button. Routes through
+## the global DevMode autoload so the F9 shortcut and the in-scene button
+## share the same source of truth.
+func _on_dev_mode_toggle_changed(pressed: bool) -> void:
+	DevMode.set_enabled(pressed)
+
+
+## Called when DevMode.changed fires (e.g. F9 flipped the state). Updates
+## the button's visual toggle state + label so the UI always mirrors the
+## real flag, regardless of who changed it.
+func _on_dev_mode_state_synced(enabled: bool) -> void:
+	if dev_mode_toggle:
+		# Use button_pressed (not call pressed()) so we don't re-emit toggled.
+		if dev_mode_toggle.button_pressed != enabled:
+			dev_mode_toggle.set_pressed_no_signal(enabled)
+		dev_mode_toggle.text = "Dev Mode: ON" if enabled else "Dev Mode: OFF"
 
 
 # =============================================================================

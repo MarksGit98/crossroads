@@ -25,9 +25,10 @@ const ICON_RANGE: Texture2D = preload("res://assets/creatures/stats/range.png")
 const ICON_SLOW: Texture2D = preload("res://assets/creatures/stats/slow.png")
 const ICON_BURN: Texture2D = preload("res://assets/creatures/stats/burn.png")
 const ICON_ULT_COOLDOWN: Texture2D = preload("res://assets/creatures/stats/ult_cooldown.png")
-## Axe icon for the CHARGES slot. Reused from the thrown-axe deployable art
-## so the overhead bar's ammo indicator matches the projectile on the board.
-const ICON_CHARGES: Texture2D = preload("res://assets/deployables/axe/axe.png")
+## Axe icon for the CHARGES slot. Uses the dedicated stat-bar axe sprite
+## (separate from the thrown-axe deployable's in-world art) so the overhead
+## icon can be tuned for legibility without affecting the projectile sprite.
+const ICON_CHARGES: Texture2D = preload("res://assets/creatures/stats/axe.png")
 
 
 # =============================================================================
@@ -175,10 +176,15 @@ func set_creature(creature: Creature) -> void:
 	_creature.healed.connect(_on_stats_changed.unbind(2))
 	_creature.status_applied.connect(_on_stats_changed.unbind(2))
 	_creature.status_removed.connect(_on_stats_changed.unbind(2))
+	# atk_changed / armor_changed emit (creature, new_value) — unbind both
+	# args so the callback's (_a = null) signature doesn't cause an arity
+	# mismatch that silently drops the refresh call. Without this, equip
+	# cards would apply correctly but the bar wouldn't redraw until some
+	# OTHER signal happened to fire (damaged, status_applied, turn start).
 	if _creature.has_signal("atk_changed"):
-		_creature.atk_changed.connect(_on_stats_changed)
+		_creature.atk_changed.connect(_on_stats_changed.unbind(2))
 	if _creature.has_signal("armor_changed"):
-		_creature.armor_changed.connect(_on_stats_changed)
+		_creature.armor_changed.connect(_on_stats_changed.unbind(2))
 
 	_refresh()
 

@@ -245,6 +245,21 @@ enum PassiveType {
 }
 
 
+## --- Equipment Modifiers ---
+##
+## Discriminates the entries in CardData.equip_modifiers. Unlike PassiveType
+## (which covers continuous auras and event-triggered passives on creature
+## cards), these are specifically the kinds of persistent changes an equip
+## card makes to the creature it's attached to: additive stat adjustments,
+## status effects that are applied on equip / removed on unequip, and the
+## inverse (status cleansed on equip).
+enum EquipModifierType {
+	MODIFY_STAT,      ## Additive stat delta. Fields: stat (Stat enum), value (int).
+	APPLY_STATUS,     ## Apply a status while equipped. Fields: status, duration.
+	REMOVE_STATUS,    ## Strip a status on equip (one-shot cleanse). Fields: status.
+}
+
+
 # --- Conditions ---
 
 enum Condition {

@@ -21,21 +21,12 @@ static func data() -> CardData:
 	# Keywords granted to equipped unit
 	card.keywords = [CardTypes.Keyword.SCOUT]
 
-	# Passives — +2 armor while equipped
-	card.passives = [
+	# Equip modifiers — +2 armor while equipped.
+	card.equip_modifiers = [
 		{
-			"id": "wolfskin_defense",
-			"name": "Wolfskin Defense",
-			"type": CardTypes.PassiveType.MODIFY_STATS,
-			"effects": [
-				{
-					"type": CardTypes.EffectType.MODIFY_STAT,
-					"target": CardTypes.EffectTarget.SELECTED,
-					"stat": CardTypes.Stat.ARMOR,
-					"value": 2,
-					"duration": CardTypes.Duration.WHILE_ALIVE,
-				},
-			],
+			"type": CardTypes.EquipModifierType.MODIFY_STAT,
+			"stat": CardTypes.Stat.ARMOR,
+			"value": 2,
 		},
 	]
 

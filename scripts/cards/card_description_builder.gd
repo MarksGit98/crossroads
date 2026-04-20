@@ -37,15 +37,17 @@ static func build_spell_description(data: CardData) -> String:
 
 
 ## Build the full description text for an equipment card.
-## Format: stat modifier lines, granted keywords, flavor.
+## Format: modifier lines (stat deltas + status applications), granted
+## keywords, flavor. Reads card.equip_modifiers (the new schema), which
+## replaced the old "passives with STAT_AURA entries" approach.
 static func build_equip_description(data: CardData) -> String:
 	var parts: PackedStringArray = []
 
-	# Passive lines (stat modifiers from passives). Resolve variants so an
-	# upgraded equip card's face shows its upgraded passive values.
-	var passives: Array = CardData.resolve_variants(data.passives, data.is_upgraded)
-	for passive: Dictionary in passives:
-		var line: String = format_passive(passive)
+	# Modifier lines. Resolve variants so an upgraded equip's face shows
+	# its upgraded values automatically.
+	var mods: Array = CardData.resolve_variants(data.equip_modifiers, data.is_upgraded)
+	for mod: Dictionary in mods:
+		var line: String = format_equip_modifier(mod)
 		if line != "":
 			parts.append(line)
 
@@ -59,6 +61,36 @@ static func build_equip_description(data: CardData) -> String:
 		parts.append("\"%s\"" % data.flavor)
 
 	return "\n".join(parts)
+
+
+## Format a single equip_modifiers entry into a human-readable line.
+## Returns "" for unrecognized types so they silently drop from the card face.
+static func format_equip_modifier(mod: Dictionary) -> String:
+	var mtype: int = mod.get("type", -1)
+	match mtype:
+		CardTypes.EquipModifierType.MODIFY_STAT:
+			var stat: int = mod.get("stat", -1)
+			var value: int = mod.get("value", 0)
+			if value == 0 or stat < 0:
+				return ""
+			var sign: String = "+" if value > 0 else ""
+			return "%s%d %s while equipped." % [sign, value, _stat_name(stat)]
+
+		CardTypes.EquipModifierType.APPLY_STATUS:
+			var status: int = mod.get("status", -1)
+			if status < 0:
+				return ""
+			var status_name: String = CardTypes.StatusEffect.keys()[status].capitalize()
+			return "Grants %s while equipped." % status_name
+
+		CardTypes.EquipModifierType.REMOVE_STATUS:
+			var status: int = mod.get("status", -1)
+			if status < 0:
+				return ""
+			var status_name: String = CardTypes.StatusEffect.keys()[status].capitalize()
+			return "Removes %s on equip." % status_name
+
+	return ""
 
 
 # =============================================================================

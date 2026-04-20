@@ -19,6 +19,17 @@ signal active_ability_selected(ability_index: int)
 ## Emitted when the menu is closed without selecting an action.
 signal menu_closed()
 
+## Emitted when the mouse enters / exits one of the action buttons. The
+## BoardInteractionManager listens to these to paint a range-preview of
+## the hovered action (valid move hexes, valid attack targets, valid
+## active-ability targets) so the player can eyeball reach before committing.
+##
+## `kind` is &"move", &"attack", or &"active".
+## `ability_index` is the active's index (only meaningful when kind == &"active";
+## -1 for move / attack).
+signal action_button_hovered(kind: StringName, ability_index: int)
+signal action_button_unhovered()
+
 # =============================================================================
 # Node References
 # =============================================================================
@@ -72,8 +83,28 @@ func _ready() -> void:
 	_move_button.pressed.connect(_on_move_pressed)
 	_attack_button.pressed.connect(_on_attack_pressed)
 
+	# Hover-to-preview: when the player mouses over a button, emit a signal
+	# so BoardInteractionManager can paint the action's range. On exit,
+	# clear the preview back to just the selected-creature highlight.
+	_move_button.mouse_entered.connect(_on_hover_move_enter)
+	_move_button.mouse_exited.connect(_on_hover_exit)
+	_attack_button.mouse_entered.connect(_on_hover_attack_enter)
+	_attack_button.mouse_exited.connect(_on_hover_exit)
+
 	# Build the tooltip panel (hidden by default).
 	_build_tooltip()
+
+
+func _on_hover_move_enter() -> void:
+	action_button_hovered.emit(&"move", -1)
+
+
+func _on_hover_attack_enter() -> void:
+	action_button_hovered.emit(&"attack", -1)
+
+
+func _on_hover_exit() -> void:
+	action_button_unhovered.emit()
 
 
 # =============================================================================
@@ -254,6 +285,8 @@ func _on_active_hover_enter(ability_index: int) -> void:
 
 	_hovered_ability_index = ability_index
 	_populate_tooltip(ability_index)
+	# Tell the interaction manager to paint the ability's range preview.
+	action_button_hovered.emit(&"active", ability_index)
 
 	# Position tooltip to the right of this menu panel.
 	_tooltip_panel.position = Vector2(position.x + size.x + TOOLTIP_GAP, position.y)
@@ -276,6 +309,8 @@ func _on_active_hover_enter(ability_index: int) -> void:
 func _on_active_hover_exit() -> void:
 	_tooltip_panel.visible = false
 	_hovered_ability_index = -1
+	# Also clear the interaction manager's range preview.
+	action_button_unhovered.emit()
 
 
 ## Fill tooltip labels with data from a single active ability.
