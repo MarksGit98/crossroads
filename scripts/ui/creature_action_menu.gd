@@ -96,9 +96,10 @@ func show_for_creature(creature: Creature, screen_pos: Vector2, has_attack_targe
 	# Remove old active ability buttons from previous show call.
 	_clear_active_buttons()
 
-	# Create a button for each active ability.
+	# Create a button for each active ability. get_active() resolves the
+	# upgraded variant automatically if the creature is_upgraded.
 	for i: int in range(creature.active_count()):
-		var ability: Dictionary = creature.card_data.actives[i]
+		var ability: Dictionary = creature.get_active(i)
 		var ability_name: String = ability.get("name", "Active %d" % (i + 1))
 
 		var btn: Button = Button.new()
@@ -248,7 +249,7 @@ func _on_active_hover_enter(ability_index: int) -> void:
 		return
 	if not visible:
 		return
-	if ability_index < 0 or ability_index >= _creature.card_data.actives.size():
+	if ability_index < 0 or ability_index >= _creature.active_count():
 		return
 
 	_hovered_ability_index = ability_index
@@ -282,11 +283,11 @@ func _populate_tooltip(ability_index: int) -> void:
 	if _creature == null or _creature.card_data == null:
 		return
 
-	var actives: Array = _creature.card_data.actives
-	if ability_index < 0 or ability_index >= actives.size():
+	# Use the creature's resolved active (variant-aware) so tooltips show
+	# the upgraded version's name / cost / description when applicable.
+	var ability: Dictionary = _creature.get_active(ability_index)
+	if ability.is_empty():
 		return
-
-	var ability: Dictionary = actives[ability_index]
 	var ability_name: String = ability.get("name", "Unknown")
 	var cost: int = ability.get("cost", 0)
 	var cooldown: int = ability.get("cooldown", 0)

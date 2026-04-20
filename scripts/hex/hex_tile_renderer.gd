@@ -12,6 +12,27 @@ const TILE_HEIGHT: int = 136
 ## For hex_size 60: ~103.9 px. The remaining ~32px is the 2.5D depth.
 const DEPTH_OFFSET: float = 16.0  # half of (TILE_HEIGHT - hex_face_height)
 
+## Z-index band used for ground tiles. They sit in a low band so they can
+## never overlap creatures, whose sprites often extend visually beyond their
+## own hex (e.g. the Minotaur's weapon reaching into the row below).
+## Ground tiles sort among themselves by row so back-row ground still draws
+## before front-row ground.
+##
+## Middle/top tiles and creatures live in a separate upper band (see below).
+##
+## Both bands are kept well inside Godot's [-4096, 4096] z_index clamp so
+## large values don't get silently capped and collapse into the same z.
+## Ground band reserves room for up to 500 rows of row-sorted tiles; the
+## objects band adds row*3 + sub_layer on top of its base, giving plenty of
+## room for any reasonably-sized grid without overlap between bands.
+const Z_BAND_GROUND: int = 0
+
+## Z-index band for "vertical" objects that should participate in the 2.5D
+## depth sort — middle tiles (trees, mountains, walls), top tiles, highlights,
+## and creatures. Everything in this band sorts by row and sub-layer, so a
+## wall in the row IN FRONT of a creature still draws over it.
+const Z_BAND_OBJECTS: int = 1000
+
 ## Texture cache so we don't reload the same image per tile.
 var _texture_cache: Dictionary = {}  # path -> Texture2D
 
@@ -43,6 +64,15 @@ var _highlight_border: HexBorderOverlay = null
 var hex_size: float = 60.0
 
 
+func _ready() -> void:
+	# Belt-and-suspenders for depth sorting: z_index is the primary key
+	# (cross-band), y_sort_enabled handles ties within the same z (e.g.
+	# two middle-tile sprites that happen to land on the same row). This
+	# keeps rendering deterministic if we ever add overlapping sprites or
+	# runtime-inserted tiles that don't perfectly partition by row.
+	y_sort_enabled = true
+
+
 ## Build all tile visuals from the grid's tile data.
 ## Call this once after HexGrid.load_layout().
 func build_visuals(tiles: Dictionary, p_hex_size: float) -> void:
@@ -62,29 +92,34 @@ func build_visuals(tiles: Dictionary, p_hex_size: float) -> void:
 		var world_pos: Vector2 = HexHelper.hex_to_world(coord, hex_size)
 		var tex_info: Dictionary = TerrainTypes.get_tile_textures(tile.terrain)
 
-		# Ground layer sprite
+		# Ground layer sprite — lives in the low Z_BAND_GROUND so creatures
+		# always draw above ground tiles regardless of row.
 		var ground_sprite: Sprite2D = Sprite2D.new()
 		ground_sprite.texture = _load_texture(tex_info.ground)
 		ground_sprite.position = world_pos + Vector2(0, DEPTH_OFFSET)
-		ground_sprite.z_index = coord.y * 3
+		ground_sprite.z_index = Z_BAND_GROUND + coord.y
 		add_child(ground_sprite)
 
-		# Spawn zone tint overlay
+		# Spawn zone tint overlay — layered just on top of its ground tile
+		# and still below everything else.
 		if tile.valid_spawn:
 			var spawn_overlay: Sprite2D = Sprite2D.new()
 			spawn_overlay.texture = ground_sprite.texture
 			spawn_overlay.position = ground_sprite.position
-			spawn_overlay.z_index = coord.y * 3
+			spawn_overlay.z_index = Z_BAND_GROUND + coord.y
 			spawn_overlay.modulate = Color(1.0, 0.9, 0.2, 0.3)
 			add_child(spawn_overlay)
 
-		# Middle layer sprite (trees, mountains, etc.)
+		# Middle layer sprite (trees, mountains, walls). Lives in the upper
+		# Z_BAND_OBJECTS band alongside creatures so the 2.5D depth sort
+		# between walls and creatures still works correctly — a wall in a
+		# row closer to the camera still draws over creatures behind it.
 		var middle_sprite: Sprite2D = null
 		if tex_info.middle != "":
 			middle_sprite = Sprite2D.new()
 			middle_sprite.texture = _load_texture(tex_info.middle)
 			middle_sprite.position = world_pos + Vector2(0, DEPTH_OFFSET)
-			middle_sprite.z_index = coord.y * 3 + 1
+			middle_sprite.z_index = Z_BAND_OBJECTS + coord.y * 3 + 1
 			add_child(middle_sprite)
 
 		_tile_sprites[coord] = {ground = ground_sprite, middle = middle_sprite}
@@ -133,7 +168,9 @@ func set_highlights(coords: Dictionary) -> void:
 		sprite.texture = _highlight_texture
 		sprite.position = HexHelper.hex_to_world(coord, hex_size) + Vector2(0, DEPTH_OFFSET)
 		sprite.modulate = color
-		sprite.z_index = coord.y * 3 + 2
+		# Highlights ride with the objects band so they read as painted on
+		# top of the tile but still underneath walls/creatures.
+		sprite.z_index = Z_BAND_OBJECTS + coord.y * 3 + 2
 		add_child(sprite)
 		_highlight_sprites[coord] = sprite
 
@@ -186,7 +223,7 @@ func add_spawn_overlay(coord: Vector2i) -> void:
 	var overlay: Sprite2D = Sprite2D.new()
 	overlay.texture = ground_sprite.texture
 	overlay.position = ground_sprite.position
-	overlay.z_index = coord.y * 3
+	overlay.z_index = Z_BAND_GROUND + coord.y
 	overlay.modulate = Color(1.0, 0.9, 0.2, 0.3)
 	add_child(overlay)
 	_spawn_overlays[coord] = overlay

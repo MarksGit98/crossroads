@@ -98,8 +98,11 @@ func detach() -> void:
 func _apply_modifiers(creature: Creature, direction: int) -> void:
 	if card_data == null:
 		return
-	# Apply stat bonuses defined in passives.
-	for passive: Dictionary in card_data.passives:
+	# Resolve passives through the variant helper so an upgraded equip uses
+	# its upgraded passive values. Equip cards use card_data.is_upgraded
+	# directly (no Creature instance owns the equip, the card does).
+	var passives: Array = CardData.resolve_variants(card_data.passives, card_data.is_upgraded)
+	for passive: Dictionary in passives:
 		var ptype: int = passive.get("type", -1)
 		if ptype == CardTypes.PassiveType.STAT_AURA:
 			var stat: int = passive.get("stat", -1)

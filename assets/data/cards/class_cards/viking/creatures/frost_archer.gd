@@ -28,23 +28,25 @@ static func data() -> CardData:
 	# Keywords
 	card.keywords = [CardTypes.Keyword.RANGED]
 
-	# Passives — chill on hit
+	# Passives — chill on hit. No upgrade yet.
 	card.passives = [
 		{
-			"id": "freezing_arrows",
-			"name": "Freezing Arrows",
-			"type": CardTypes.PassiveType.ON_TRIGGER,
-			"trigger": CardTypes.TriggerType.ON_HIT,
-			"effects": [
-				{
-					"type": CardTypes.EffectType.APPLY_STATUS,
-					"target": CardTypes.EffectTarget.SELECTED,
-					"status": CardTypes.StatusEffect.CHILLED,
-					"intensity": 1,
-					"duration": CardTypes.Duration.N_TURNS,
-					"duration_turns": 1,
-				},
-			],
+			"regular": {
+				"id": "freezing_arrows",
+				"name": "Freezing Arrows",
+				"type": CardTypes.PassiveType.ON_TRIGGER,
+				"trigger": CardTypes.TriggerType.ON_HIT,
+				"effects": [
+					{
+						"type": CardTypes.EffectType.APPLY_STATUS,
+						"target": CardTypes.EffectTarget.SELECTED,
+						"status": CardTypes.StatusEffect.CHILLED,
+						"intensity": 1,
+						"duration": CardTypes.Duration.N_TURNS,
+						"duration_turns": 1,
+					},
+				],
+			},
 		},
 	]
 

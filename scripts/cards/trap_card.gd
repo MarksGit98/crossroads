@@ -80,10 +80,3 @@ func trigger(ctx: DuelContext) -> void:
 		return
 	is_triggered = true
 	resolve_effects(ctx)
-
-
-## Apply a single effect dictionary from the card data.
-## Overrides base to allow trap-specific effect handling.
-func _apply_effect(effect: Dictionary, ctx: DuelContext) -> void:
-	# TODO: Dispatch to the effect system based on effect["type"].
-	super._apply_effect(effect, ctx)

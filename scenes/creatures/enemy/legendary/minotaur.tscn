@@ -1,0 +1,24 @@
+[gd_scene format=3 uid="uid://bypfygjgu52lj"]
+
+[ext_resource type="PackedScene" uid="uid://bfnbd4apuyw35" path="res://scenes/creatures/enemy/enemy.tscn" id="1_base"]
+[ext_resource type="SpriteFrames" uid="uid://t02lcg0jg1h7" path="res://resources/creatures/enemy/legendary/minotaur_frames.tres" id="2_frames"]
+
+[node name="Minotaur" unique_id=1842001001 instance=ExtResource("1_base")]
+
+[node name="AnimatedSprite2D" parent="." index="0" unique_id=1056943193]
+sprite_frames = ExtResource("2_frames")
+
+[node name="NameLabel" parent="." index="3" unique_id=938323789]
+offset_left = -40.0
+offset_top = -54.0
+offset_right = 40.0
+offset_bottom = -40.0
+
+[node name="HPLabel" parent="." index="4" unique_id=755769429]
+offset_left = -40.0
+offset_top = -42.0
+offset_right = 40.0
+offset_bottom = -30.0
+
+[node name="CollisionShape2D" parent="ClickArea" parent_id_path=PackedInt32Array(932775425) index="0" unique_id=1123921904]
+position = Vector2(12.375, 15.5)

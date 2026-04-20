@@ -216,37 +216,161 @@ func _start_enemy_turn() -> void:
 # =============================================================================
 
 ## Resolve a single enemy's turn: decide action, then execute.
+##
+## AI priority (highest first):
+##   1. Self-AoE heavy attack (e.g. Minotaur's Earthquake Slam): reposition
+##      to the hex that hits the most player creatures, then slam.
+##   2. Target-range heavy attack: if in range and the heavy is ready.
+##   3. Basic attack if in range.
+##   4. Otherwise, move toward the nearest player creature.
 func _resolve_enemy_action(enemy: EnemyCreature) -> void:
 	var player_creatures: Array[Creature] = _get_living_player_creatures()
 	if player_creatures.is_empty():
 		return
+
+	# -- Priority 1: self-AoE heavy attack (e.g. Minotaur) --
+	if enemy.can_use_heavy_attack() and _is_self_aoe_heavy_attack(enemy):
+		if await _try_use_self_aoe_heavy(enemy, player_creatures):
+			enemy.set_intent(EnemyCreature.Intent.NONE)
+			return
 
 	var nearest: Creature = _find_nearest_player_creature(enemy, player_creatures)
 	if nearest == null:
 		return
 
 	var distance: int = HexHelper.hex_distance(enemy.hex_position, nearest.hex_position)
+	var heavy_range: int = _heavy_attack_range(enemy)
 
-	# Decision: attack if in range, otherwise move toward target.
+	# -- Priority 2: target-range heavy attack if in range --
+	if enemy.can_use_heavy_attack() and distance <= heavy_range and enemy.can_attack():
+		enemy.set_intent(EnemyCreature.Intent.ATTACK, enemy.current_atk)
+		await get_tree().create_timer(0.3).timeout
+		await enemy.perform_heavy_attack(nearest.hex_position, hex_grid, _ctx())
+		enemy.set_intent(EnemyCreature.Intent.NONE)
+		return
+
+	# -- Priority 3: basic attack if in range --
 	if distance <= enemy.attack_range and enemy.can_attack():
 		enemy.set_intent(EnemyCreature.Intent.ATTACK, enemy.current_atk)
 		await get_tree().create_timer(0.3).timeout
 		await enemy.perform_attack(nearest, hex_grid)
+	# -- Priority 4: move toward nearest, then opportunistic attack --
 	elif enemy.can_move():
 		enemy.set_intent(EnemyCreature.Intent.MOVE)
 		await get_tree().create_timer(0.3).timeout
 		await _move_enemy_toward(enemy, nearest)
 
-		# After moving, check if now in attack range.
 		if enemy.can_attack() and nearest.is_alive():
 			var new_distance: int = HexHelper.hex_distance(enemy.hex_position, nearest.hex_position)
-			if new_distance <= enemy.attack_range:
+			# Prefer heavy if the move brought it into heavy range.
+			if enemy.can_use_heavy_attack() and new_distance <= heavy_range:
+				enemy.set_intent(EnemyCreature.Intent.ATTACK, enemy.current_atk)
+				await get_tree().create_timer(0.2).timeout
+				await enemy.perform_heavy_attack(nearest.hex_position, hex_grid, _ctx())
+			elif new_distance <= enemy.attack_range:
 				enemy.set_intent(EnemyCreature.Intent.ATTACK, enemy.current_atk)
 				await get_tree().create_timer(0.2).timeout
 				await enemy.perform_attack(nearest, hex_grid)
 
 	# Clear intent after acting.
 	enemy.set_intent(EnemyCreature.Intent.NONE)
+
+
+## Whether an enemy's heavy attack is a self-centered AoE (e.g. Minotaur's
+## Earthquake Slam — "target_rule: SELF" with aoe_center: "caster" in effects).
+func _is_self_aoe_heavy_attack(enemy: EnemyCreature) -> bool:
+	if enemy.enemy_data == null:
+		return false
+	var spec: Dictionary = enemy.enemy_data.heavy_attack
+	if spec.is_empty():
+		return false
+	var rule: int = spec.get("target_rule", -1)
+	return rule == CardTypes.TargetRule.SELF
+
+
+## Pull the heavy-attack range out of the enemy's data. Defaults to 1.
+func _heavy_attack_range(enemy: EnemyCreature) -> int:
+	if enemy.enemy_data == null:
+		return 1
+	return enemy.enemy_data.heavy_attack.get("range", 1)
+
+
+## Attempt to use a self-AoE heavy attack. Scans candidate hexes (current
+## position + valid move destinations) for the one that maximizes the count
+## of player creatures adjacent to it. If moving there first is required,
+## moves the enemy. Then fires the heavy attack.
+##
+## Returns true if the heavy attack was performed.
+func _try_use_self_aoe_heavy(enemy: EnemyCreature, player_creatures: Array[Creature]) -> bool:
+	if enemy.enemy_data == null or enemy.enemy_data.heavy_attack.is_empty():
+		return false
+	var spec: Dictionary = enemy.enemy_data.heavy_attack
+	# Determine the AoE radius from the heavy attack's first damage-dealing effect.
+	var aoe_radius: int = 1
+	for e: Dictionary in spec.get("effects", []):
+		if e.has("aoe_radius"):
+			aoe_radius = e.get("aoe_radius", 1)
+			break
+
+	# Candidate hexes: current hex + every hex the enemy could step to this turn.
+	var candidates: Array[Vector2i] = [enemy.hex_position]
+	if enemy.can_move():
+		candidates.append_array(hex_grid.get_valid_moves_for(enemy))
+
+	# Score each candidate by how many player creatures fall within aoe_radius.
+	var best_hex: Vector2i = enemy.hex_position
+	var best_score: int = _count_players_in_range(enemy.hex_position, aoe_radius, player_creatures)
+
+	for hex: Vector2i in candidates:
+		if hex == enemy.hex_position:
+			continue
+		var score: int = _count_players_in_range(hex, aoe_radius, player_creatures)
+		if score > best_score:
+			best_score = score
+			best_hex = hex
+
+	# Only fire the heavy if at least one player creature is hit.
+	if best_score <= 0:
+		return false
+
+	# Move into position first if needed.
+	if best_hex != enemy.hex_position:
+		enemy.set_intent(EnemyCreature.Intent.MOVE)
+		await get_tree().create_timer(0.3).timeout
+		await _move_enemy_to(enemy, best_hex)
+
+	# Fire the heavy attack against the enemy's own hex (self-AoE).
+	enemy.set_intent(EnemyCreature.Intent.ATTACK, enemy.current_atk)
+	await get_tree().create_timer(0.3).timeout
+	await enemy.perform_heavy_attack(enemy.hex_position, hex_grid, _ctx())
+	return true
+
+
+## Count how many player creatures are within N hexes of the given hex.
+func _count_players_in_range(center: Vector2i, radius: int, players: Array[Creature]) -> int:
+	var n: int = 0
+	for p: Creature in players:
+		if HexHelper.hex_distance(p.hex_position, center) <= radius:
+			n += 1
+	return n
+
+
+## Move an enemy directly to a specific hex (used by AI positioning).
+## Updates tile occupancy and awaits the movement tween.
+func _move_enemy_to(enemy: EnemyCreature, hex: Vector2i) -> void:
+	if hex == enemy.hex_position:
+		return
+	hex_grid.remove_creature(enemy.hex_position)
+	var new_tile: HexTileData = hex_grid.get_tile(hex)
+	if new_tile:
+		new_tile.occupant = enemy
+	await enemy.move_to(hex, hex_grid.hex_size, ctx)
+
+
+## Shorthand for the turn manager's DuelContext reference. Heavy attacks
+## need the full context to resolve effects/targets.
+func _ctx() -> DuelContext:
+	return ctx
 
 
 ## Find the nearest player creature to an enemy by hex distance.
@@ -288,7 +412,7 @@ func _move_enemy_toward(enemy: EnemyCreature, target: Creature) -> void:
 		new_tile.occupant = enemy
 
 	# Animate the move.
-	await enemy.move_to(best_hex, hex_grid.hex_size)
+	await enemy.move_to(best_hex, hex_grid.hex_size, ctx)
 
 
 # =============================================================================

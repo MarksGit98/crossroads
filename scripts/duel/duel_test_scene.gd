@@ -45,6 +45,12 @@ func _ready() -> void:
 		GamemodeTypes.mode_name(current_gamemode),
 		GamemodeTypes.mode_description(current_gamemode),
 	])
+	# Enable y_sort_enabled on the creatures parent so same-z creature
+	# sprites (e.g. two creatures at the same row during a movement
+	# animation) sort deterministically by world y position. Secondary
+	# precaution alongside our row-based z_index scheme.
+	if creatures_node:
+		creatures_node.y_sort_enabled = true
 	_generate_new_map()
 	_anchor_end_turn_ui()
 	get_viewport().size_changed.connect(_anchor_end_turn_ui)

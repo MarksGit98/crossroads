@@ -92,6 +92,22 @@ region = Rect2(1000, 0, 100, 100)
 atlas = ExtResource("attack02_sheet")
 region = Rect2(1100, 0, 100, 100)
 
+[sub_resource type="AtlasTexture" id="death_0"]
+atlas = ExtResource("death_sheet")
+region = Rect2(0, 0, 100, 100)
+
+[sub_resource type="AtlasTexture" id="death_1"]
+atlas = ExtResource("death_sheet")
+region = Rect2(100, 0, 100, 100)
+
+[sub_resource type="AtlasTexture" id="death_2"]
+atlas = ExtResource("death_sheet")
+region = Rect2(200, 0, 100, 100)
+
+[sub_resource type="AtlasTexture" id="death_3"]
+atlas = ExtResource("death_sheet")
+region = Rect2(300, 0, 100, 100)
+
 [sub_resource type="AtlasTexture" id="atk03_0"]
 atlas = ExtResource("attack03_sheet")
 region = Rect2(0, 0, 100, 100)
@@ -123,22 +139,6 @@ region = Rect2(600, 0, 100, 100)
 [sub_resource type="AtlasTexture" id="atk03_7"]
 atlas = ExtResource("attack03_sheet")
 region = Rect2(700, 0, 100, 100)
-
-[sub_resource type="AtlasTexture" id="death_0"]
-atlas = ExtResource("death_sheet")
-region = Rect2(0, 0, 100, 100)
-
-[sub_resource type="AtlasTexture" id="death_1"]
-atlas = ExtResource("death_sheet")
-region = Rect2(100, 0, 100, 100)
-
-[sub_resource type="AtlasTexture" id="death_2"]
-atlas = ExtResource("death_sheet")
-region = Rect2(200, 0, 100, 100)
-
-[sub_resource type="AtlasTexture" id="death_3"]
-atlas = ExtResource("death_sheet")
-region = Rect2(300, 0, 100, 100)
 
 [sub_resource type="AtlasTexture" id="hurt_0"]
 atlas = ExtResource("hurt_sheet")
@@ -293,6 +293,23 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
+"texture": SubResource("death_0")
+}, {
+"duration": 1.0,
+"texture": SubResource("death_1")
+}, {
+"duration": 1.0,
+"texture": SubResource("death_2")
+}, {
+"duration": 1.0,
+"texture": SubResource("death_3")
+}],
+"loop": false,
+"name": &"death",
+"speed": 8.0
+}, {
+"frames": [{
+"duration": 1.0,
 "texture": SubResource("atk03_0")
 }, {
 "duration": 1.0,
@@ -317,25 +334,8 @@ animations = [{
 "texture": SubResource("atk03_7")
 }],
 "loop": false,
-"name": &"attack03",
+"name": &"heavy_attack",
 "speed": 10.0
-}, {
-"frames": [{
-"duration": 1.0,
-"texture": SubResource("death_0")
-}, {
-"duration": 1.0,
-"texture": SubResource("death_1")
-}, {
-"duration": 1.0,
-"texture": SubResource("death_2")
-}, {
-"duration": 1.0,
-"texture": SubResource("death_3")
-}],
-"loop": false,
-"name": &"death",
-"speed": 8.0
 }, {
 "frames": [{
 "duration": 1.0,

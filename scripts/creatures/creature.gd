@@ -83,6 +83,45 @@ var status_effects: Dictionary = {}
 ## Per-active cooldown tracking: ability index -> remaining cooldown turns.
 var _active_cooldowns: Dictionary = {}
 
+## Whether this creature has been upgraded. Mirrors card_data.is_upgraded
+## at init time so the value is stable per-instance (detached from the
+## shared CardData if it gets re-upgraded mid-duel). Calling upgrade()
+## mid-duel flips BOTH this field and card_data.is_upgraded so future
+## summons of the same card id also come out upgraded for the rest of
+## the run. Mid-duel upgrades do NOT retroactively re-fire ON_SUMMON
+## passives — the new variants apply going forward.
+var is_upgraded: bool = false
+
+## Consumable charges for deployable-throwing abilities. Keyed by the
+## deployable type id (e.g. "axed_marauder_axe"). An ability that throws a
+## deployable decrements its count; picking the deployable back up restores
+## a charge. Other ability types that want "ammo" semantics can reuse this
+## dict without the creature class needing to know about their specifics.
+##
+## Example: Axed Marauder spawns with `{"axed_marauder_axe": 2}` (or 3 when
+## upgraded). can_use_active() gates the throw on count > 0.
+var deployable_charges: Dictionary = {}
+
+## The sprite's resting flip_h value, captured at init. `perform_attack()`
+## flips the sprite to face its target mid-attack, then restores this value
+## on the return trip. Player creatures default to false (face right);
+## enemies default to true (face left, toward the player), unless their
+## EnemyData says the source art is already drawn facing left.
+var _default_sprite_flip_h: bool = false
+
+## Whether this creature can perform a heavy/special attack (true if its
+## SpriteFrames contain a heavy_attack or heavy_attack_start animation).
+## Populated at init time by looking up the sprite_frames.
+var has_heavy_attack: bool = false
+
+## Turns remaining before this creature can use its heavy attack again.
+## Decremented at start_turn(). 0 = ready.
+var heavy_attack_cd_remaining: int = 0
+
+## Default heavy-attack cooldown (turns) when a creature has one. Per-creature
+## overrides can be added later by reading from CardData / EnemyData.
+const HEAVY_ATTACK_COOLDOWN: int = 3
+
 # =============================================================================
 # Node References
 # =============================================================================
@@ -143,7 +182,14 @@ func initialize(data: CardData, hex: Vector2i, hex_size: float) -> void:
 	attack_pattern = data.attack_pattern
 	damage_type = data.damage_type
 
-	# Initialize cooldowns for all actives at 0 (ready to use).
+	# Mirror the card's persistent upgrade flag onto this instance so our
+	# get_actives / get_passives accessors resolve the right variant. If
+	# the card gets upgraded later mid-duel, Creature.upgrade() updates both.
+	is_upgraded = data.is_upgraded
+
+	# Initialize cooldowns for all actives at 0 (ready to use). The count is
+	# based on the raw actives array length — each ENTRY gets one slot,
+	# regardless of whether it's variant-grouped or flat.
 	for i: int in range(data.actives.size()):
 		_active_cooldowns[i] = 0
 
@@ -151,8 +197,12 @@ func initialize(data: CardData, hex: Vector2i, hex_size: float) -> void:
 	hex_position = hex
 	position = HexHelper.hex_to_world(hex, hex_size) + Vector2(0, HexTileRenderer.DEPTH_OFFSET)
 
-	# Z-order: creatures render above ground and middle tiles at the same row.
-	z_index = hex.y * 3 + 2
+	# Z-order: creatures live in the objects band alongside walls/top tiles,
+	# so ground tiles from any row sit beneath them. Within the objects
+	# band, creatures still sort by row (+2 sub-layer so they're above
+	# same-row walls/middle tiles) — walls in rows in front of the creature
+	# correctly draw over it.
+	z_index = HexTileRenderer.Z_BAND_OBJECTS + hex.y * 3 + 2
 
 	# Scale the creature to fit the hex based on sprite frame size.
 	_apply_creature_scale(hex_size)
@@ -165,6 +215,11 @@ func initialize(data: CardData, hex: Vector2i, hex_size: float) -> void:
 		# Fallback if state machine node isn't present.
 		if animated_sprite.sprite_frames and animated_sprite.sprite_frames.has_animation(&"idle"):
 			animated_sprite.play(&"idle")
+
+	# Detect whether this creature has a heavy attack animation — either a
+	# single-phase "heavy_attack" or the minotaur-style multi-phase
+	# "heavy_attack_start" sequence. Cooldown starts ready (0).
+	_detect_heavy_attack_support()
 
 	# Fire ON_SUMMON passives.
 	check_passive_triggers(CardTypes.TriggerType.ON_SUMMON, {"creature": self})
@@ -307,8 +362,12 @@ func start_turn() -> void:
 	has_attacked = false
 	has_used_active = false
 	_tick_cooldowns()
+	_tick_heavy_attack_cooldown()
 	_tick_status_effects()
 	check_passive_triggers(CardTypes.TriggerType.START_OF_TURN, {"creature": self})
+	# Refresh the stats bar so the ult cooldown counter updates on tick.
+	if _stats_bar:
+		_stats_bar.refresh()
 
 
 ## Called at the end of the owning player's turn.
@@ -331,7 +390,8 @@ func end_turn() -> void:
 func can_use_active(ability_index: int, ctx: DuelContext) -> bool:
 	if card_data == null:
 		return false
-	if ability_index < 0 or ability_index >= card_data.actives.size():
+	var ability: Dictionary = get_active(ability_index)
+	if ability.is_empty():
 		return false
 	if has_used_active:
 		return false
@@ -339,8 +399,6 @@ func can_use_active(ability_index: int, ctx: DuelContext) -> bool:
 		return false
 	if has_status(CardTypes.StatusEffect.SILENCED):
 		return false
-
-	var ability: Dictionary = card_data.actives[ability_index]
 
 	# Check cooldown.
 	var remaining_cd: int = _active_cooldowns.get(ability_index, 0)
@@ -375,7 +433,7 @@ func use_active(ability_index: int, ctx: DuelContext) -> void:
 	if not can_use_active(ability_index, ctx):
 		return
 
-	var ability: Dictionary = card_data.actives[ability_index]
+	var ability: Dictionary = get_active(ability_index)
 
 	# Pay the cost (mana by default, health if "cost_type" is set).
 	var cost: int = ability.get("cost", 0)
@@ -414,10 +472,9 @@ func use_active(ability_index: int, ctx: DuelContext) -> void:
 func get_active_targets(ability_index: int, board: HexGrid) -> Array[Vector2i]:
 	if card_data == null or board == null:
 		return []
-	if ability_index < 0 or ability_index >= card_data.actives.size():
+	var ability: Dictionary = get_active(ability_index)
+	if ability.is_empty():
 		return []
-
-	var ability: Dictionary = card_data.actives[ability_index]
 	var ability_range: int = ability.get("range", 1)
 	var target_rule: int = ability.get("target_rule", CardTypes.TargetRule.ANY_ENEMY)
 
@@ -474,9 +531,10 @@ func _apply_active_effect(effect: Dictionary, ctx: DuelContext) -> void:
 			if grid:
 				grid.mark_spawn(hex_position)
 		_:
-			# TODO: Dispatch remaining effect types (DEAL_DAMAGE, HEAL, etc.).
-			# When implemented, reuse Card._resolve_effect_targets + dispatch logic.
-			pass
+			# Fallback: delegate to the unified static dispatcher so all other
+			# effect types (DEAL_DAMAGE, HEAL, APPLY_STATUS, etc.) route through
+			# the same code path as card-driven effects and heavy attacks.
+			apply_effect(effect, ctx)
 
 
 ## Tick down active cooldowns. Called at start of turn.
@@ -493,9 +551,78 @@ func get_active_cooldown(ability_index: int) -> int:
 
 ## Get the number of active abilities this creature has.
 func active_count() -> int:
-	if card_data == null:
-		return 0
-	return card_data.actives.size()
+	return get_actives().size()
+
+
+# =============================================================================
+# Variant-aware Active/Passive Accessors
+# =============================================================================
+# All gameplay code that needs to read this creature's abilities should go
+# through get_actives() / get_passives() rather than touching card_data /
+# enemy_data directly. The accessors resolve the regular/upgraded variant
+# per-entry based on `is_upgraded`, transparently supporting both the
+# variant-grouped and legacy-flat schemas.
+
+## Return this creature's currently active abilities (regular or upgraded).
+## Reads from card_data (player creatures) or enemy_data (enemies).
+func get_actives() -> Array:
+	return CardData.resolve_variants(_raw_actives(), is_upgraded)
+
+
+## Return this creature's currently active passives (regular or upgraded).
+func get_passives() -> Array:
+	return CardData.resolve_variants(_raw_passives(), is_upgraded)
+
+
+## Fetch a single resolved active entry by index. Returns {} if out of range.
+func get_active(ability_index: int) -> Dictionary:
+	var list: Array = get_actives()
+	if ability_index < 0 or ability_index >= list.size():
+		return {}
+	return list[ability_index]
+
+
+## Upgrade this creature — future active/passive lookups will return the
+## "upgraded" variant of each ability that defines one. Idempotent.
+##
+## Also flips card_data.is_upgraded so every OTHER copy of the same card
+## in the player's deck (and any future summons of this card type) become
+## upgraded for the rest of the run. Matches the "per-card-type, per-run"
+## persistence the upgrade system was designed for.
+func upgrade() -> void:
+	if is_upgraded:
+		return
+	is_upgraded = true
+	if card_data:
+		card_data.is_upgraded = true
+	# Refresh the overhead stats bar so any upgrade-dependent display updates.
+	if _stats_bar:
+		_stats_bar.refresh()
+
+
+# -- Internal: source arrays --
+
+## Raw (unresolved) actives array from whichever data resource backs this
+## creature. Used internally by the accessors before variant resolution.
+func _raw_actives() -> Array:
+	if card_data:
+		return card_data.actives
+	if self is EnemyCreature:
+		var ed: EnemyData = (self as EnemyCreature).enemy_data
+		if ed:
+			return ed.actives
+	return []
+
+
+## Raw (unresolved) passives array.
+func _raw_passives() -> Array:
+	if card_data:
+		return card_data.passives
+	if self is EnemyCreature:
+		var ed: EnemyData = (self as EnemyCreature).enemy_data
+		if ed:
+			return ed.passives
+	return []
 
 
 # =============================================================================
@@ -514,12 +641,15 @@ func active_count() -> int:
 # to game events and are checked via check_passive_triggers().
 
 ## Check all passives for matching triggers and fire them if conditions are met.
-## Called by the game event system whenever something happens.
+## Called by the game event system whenever something happens. Uses the
+## variant-resolved passive list so upgraded creatures fire their upgraded
+## passives automatically.
 func check_passive_triggers(trigger_type: CardTypes.TriggerType, context: Dictionary) -> void:
-	if card_data == null:
+	var passives: Array = get_passives()
+	if passives.is_empty():
 		return
-	for i: int in range(card_data.passives.size()):
-		var passive: Dictionary = card_data.passives[i]
+	for i: int in range(passives.size()):
+		var passive: Dictionary = passives[i]
 		var ptype: int = passive.get("type", -1)
 
 		# Only ON_TRIGGER passives respond to game events.
@@ -587,13 +717,16 @@ func _apply_passive_effect(_effect: Dictionary, _context: Dictionary) -> void:
 
 
 ## Get all aura-type passives for continuous board evaluation.
-## Returns an array of passive dictionaries with their index.
+## Returns an array of passive dictionaries with their index. Uses the
+## variant-resolved passive list so upgraded auras expose their upgraded
+## stat values to the board.
 func get_aura_passives() -> Array[Dictionary]:
-	if card_data == null:
+	var passives: Array = get_passives()
+	if passives.is_empty():
 		return []
 	var auras: Array[Dictionary] = []
-	for i: int in range(card_data.passives.size()):
-		var passive: Dictionary = card_data.passives[i]
+	for i: int in range(passives.size()):
+		var passive: Dictionary = passives[i]
 		var ptype: int = passive.get("type", -1)
 		match ptype:
 			CardTypes.PassiveType.STAT_AURA, \
@@ -649,26 +782,32 @@ func perform_attack(target: Creature, hex_grid: HexGrid) -> int:
 	has_attacked = true
 	var home_pos: Vector2 = position
 
-	# Flip sprite to face the target.
+	# Flip sprite to face the target. Ranged units fire in place so they
+	# only need this one flip; melee units approach and return.
 	var dir: Vector2 = target.position - position
 	if animated_sprite and dir.x != 0.0:
 		animated_sprite.flip_h = dir.x < 0.0
 
-	# Walk to the target — stop adjacent to the target sprite.
-	var approach_offset: float = 30.0
-	var approach_pos: Vector2 = target.position + (home_pos - target.position).normalized() * approach_offset
+	var is_ranged: bool = is_ranged_attacker()
 
-	if state_machine:
-		state_machine.play_walk()
-	var walk_tween: Tween = create_tween().set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_CUBIC)
-	walk_tween.tween_property(self, "position", approach_pos, 0.35)
-	await walk_tween.finished
-	if state_machine:
-		state_machine.stop_walking()
+	# -- Melee-only: walk up to the target before swinging --
+	if not is_ranged:
+		var approach_offset: float = 30.0
+		var approach_pos: Vector2 = target.position + (home_pos - target.position).normalized() * approach_offset
 
-	# Play attack animation and wait for the hit frame.
+		if state_machine:
+			state_machine.play_walk()
+		var walk_tween: Tween = create_tween().set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_CUBIC)
+		walk_tween.tween_property(self, "position", approach_pos, 0.35)
+		await walk_tween.finished
+		if state_machine:
+			state_machine.stop_walking()
+
+	# Play attack animation and wait for the hit frame. Randomly cycle
+	# between attack01 and attack02 when both exist to add visual variety.
+	# Applies to both melee and ranged — ranged units fire from home_pos.
 	if state_machine:
-		state_machine.play_attack()
+		state_machine.play_attack(_pick_basic_attack_anim())
 		await state_machine.attack_hit
 
 	# Guard: target may have died from another source between anim start and hit.
@@ -684,25 +823,487 @@ func perform_attack(target: Creature, hex_grid: HexGrid) -> int:
 	if state_machine and state_machine.current_state == CreatureStateMachine.State.ATTACKING:
 		await state_machine.animation_finished
 
-	# Walk back to home position.
-	if state_machine:
-		state_machine.play_walk()
-	# Flip sprite for the return trip.
-	if animated_sprite:
-		animated_sprite.flip_h = not animated_sprite.flip_h
-	var return_tween: Tween = create_tween().set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_CUBIC)
-	return_tween.tween_property(self, "position", home_pos, 0.35)
-	await return_tween.finished
-	if state_machine:
-		state_machine.stop_walking()
+	# -- Melee-only: walk back to home position after the swing --
+	if not is_ranged:
+		if state_machine:
+			state_machine.play_walk()
+		# Flip sprite for the return trip.
+		if animated_sprite:
+			animated_sprite.flip_h = not animated_sprite.flip_h
+		var return_tween: Tween = create_tween().set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_CUBIC)
+		return_tween.tween_property(self, "position", home_pos, 0.35)
+		await return_tween.finished
+		if state_machine:
+			state_machine.stop_walking()
 
-	# Restore default sprite facing.
-	if is_enemy() and animated_sprite:
-		animated_sprite.flip_h = true
-	elif not is_enemy() and animated_sprite:
-		animated_sprite.flip_h = false
+	# Restore the sprite's default facing as set at init time.
+	if animated_sprite:
+		animated_sprite.flip_h = _default_sprite_flip_h
 
 	return actual_damage
+
+
+# =============================================================================
+# Heavy / Special Attack
+# =============================================================================
+
+## Inspect the creature's SpriteFrames for a heavy-attack animation and
+## flag `has_heavy_attack` accordingly. Accepts either a single-phase
+## "heavy_attack" animation or a multi-phase "heavy_attack_start"+loop+end
+## sequence (minotaur-style). Called once from initialize().
+func _detect_heavy_attack_support() -> void:
+	if animated_sprite == null or animated_sprite.sprite_frames == null:
+		has_heavy_attack = false
+		return
+	var sf: SpriteFrames = animated_sprite.sprite_frames
+	has_heavy_attack = sf.has_animation(&"heavy_attack") or sf.has_animation(&"heavy_attack_start")
+
+
+## Whether the creature can fire its heavy attack right now.
+## Requires heavy-attack support + 0 cooldown remaining + off-status gates.
+func can_use_heavy_attack() -> bool:
+	if not has_heavy_attack:
+		return false
+	if heavy_attack_cd_remaining > 0:
+		return false
+	if has_status(CardTypes.StatusEffect.STUNNED):
+		return false
+	if not can_attack():
+		return false
+	return true
+
+
+## Reset the heavy-attack cooldown. Reads the per-creature cooldown from
+## the heavy_attack spec (falling back to HEAVY_ATTACK_COOLDOWN if unset).
+## Call after the heavy attack fires.
+func start_heavy_attack_cooldown() -> void:
+	heavy_attack_cd_remaining = _heavy_attack_cooldown_value()
+
+
+## Look up this creature's heavy-attack cooldown length in turns.
+func _heavy_attack_cooldown_value() -> int:
+	var spec: Dictionary = _get_heavy_attack_spec()
+	return spec.get("cooldown", HEAVY_ATTACK_COOLDOWN)
+
+
+## Tick the heavy-attack cooldown down by one (called from start_turn).
+func _tick_heavy_attack_cooldown() -> void:
+	if heavy_attack_cd_remaining > 0:
+		heavy_attack_cd_remaining -= 1
+
+
+# =============================================================================
+# Static Effect Dispatcher
+# =============================================================================
+# Creatures own all state-mutation logic — damage, heal, status, etc. Cards
+# are pure data; when a card resolves, it hands its effect list to this
+# dispatcher. Creature heavy attacks do the same. Keeping the dispatcher
+# here ensures there's one authoritative place that knows how to turn an
+# effect dictionary into a state change on a target.
+
+## Apply a list of effect dictionaries in order.
+static func apply_effect_list(effects: Array, ctx: DuelContext) -> void:
+	for effect: Dictionary in effects:
+		apply_effect(effect, ctx)
+
+
+## Apply a single effect dictionary. Resolves the effect target(s) from the
+## duel context and dispatches to the appropriate Creature mutation method.
+static func apply_effect(effect: Dictionary, ctx: DuelContext) -> void:
+	var effect_type: int = effect.get("type", -1)
+	var targets: Array[Creature] = resolve_effect_targets(effect, ctx)
+
+	match effect_type:
+		CardTypes.EffectType.DEAL_DAMAGE:
+			var value: int = effect.get("value", 0)
+			var dmg_type: int = effect.get("damage_type", CardTypes.DamageType.PHYSICAL)
+			for creature: Creature in targets:
+				if creature.is_alive():
+					creature.take_damage(value, dmg_type as CardTypes.DamageType)
+
+		CardTypes.EffectType.HEAL:
+			var value: int = effect.get("value", 0)
+			for creature: Creature in targets:
+				if creature.is_alive():
+					creature.heal(value)
+
+		CardTypes.EffectType.MODIFY_STAT:
+			var stat: int = effect.get("stat", -1)
+			var value: int = effect.get("value", 0)
+			for creature: Creature in targets:
+				if creature.is_alive():
+					match stat:
+						CardTypes.Stat.ATK:
+							creature.modify_atk(value)
+						CardTypes.Stat.ARMOR:
+							creature.modify_armor(value)
+						CardTypes.Stat.HP, CardTypes.Stat.MAX_HP:
+							creature.heal(value) if value > 0 else creature.take_damage(-value)
+
+		CardTypes.EffectType.APPLY_STATUS:
+			var status: int = effect.get("status", -1)
+			# BURNING defaults to 3 turns; other statuses default to 1 if unspecified.
+			var default_duration: int = 3 if status == CardTypes.StatusEffect.BURNING else 1
+			var duration_turns: int = effect.get("duration_turns", default_duration)
+			if status >= 0:
+				for creature: Creature in targets:
+					if creature.is_alive():
+						creature.apply_status(status as CardTypes.StatusEffect, duration_turns)
+
+		CardTypes.EffectType.REMOVE_STATUS:
+			var status: int = effect.get("status", -1)
+			if status >= 0:
+				for creature: Creature in targets:
+					creature.remove_status(status as CardTypes.StatusEffect)
+
+		CardTypes.EffectType.CLEANSE:
+			for creature: Creature in targets:
+				if creature.has_method("cleanse"):
+					creature.cleanse()
+
+		CardTypes.EffectType.SHIELD:
+			var value: int = effect.get("value", 0)
+			for creature: Creature in targets:
+				if creature.is_alive():
+					creature.modify_armor(value)
+
+		CardTypes.EffectType.DRAW_CARD:
+			# Drawing is player-level, not creature-level.
+			var value: int = effect.get("value", 1)
+			var player: Player = ctx.player if ctx else null
+			if player and player.has_method("draw_cards"):
+				player.draw_cards(value)
+
+		CardTypes.EffectType.STUN:
+			for creature: Creature in targets:
+				if creature.is_alive():
+					creature.apply_status(CardTypes.StatusEffect.STUNNED, 1)
+
+		CardTypes.EffectType.SILENCE:
+			for creature: Creature in targets:
+				if creature.is_alive():
+					creature.apply_status(CardTypes.StatusEffect.SILENCED, 1)
+
+		CardTypes.EffectType.PUSH:
+			# TODO: Displacement effects require hex grid pathfinding.
+			pass
+
+		CardTypes.EffectType.PULL:
+			# TODO: Displacement effects require hex grid pathfinding.
+			pass
+
+		CardTypes.EffectType.MARK_SPAWN:
+			var board: HexGrid = ctx.board if ctx else null
+			var target_hexes: Array = ctx.target_hexes if ctx else []
+			if board and not target_hexes.is_empty():
+				board.mark_spawn(target_hexes[0])
+
+		CardTypes.EffectType.DESTROY:
+			for creature: Creature in targets:
+				if creature.is_alive():
+					creature.take_damage(creature.current_hp)
+
+		CardTypes.EffectType.EXECUTE:
+			var threshold_pct: int = effect.get("value", 0)
+			for creature: Creature in targets:
+				if creature.is_alive():
+					var pct: float = (float(creature.current_hp) / float(creature.max_hp)) * 100.0
+					if pct <= threshold_pct:
+						creature.take_damage(creature.current_hp)
+
+		_:
+			push_warning("Creature.apply_effect: unhandled effect type %d" % effect_type)
+
+
+## Resolve which creatures are targeted by a single effect.
+##
+## Supports these optional effect fields for AoE-style abilities:
+##   "aoe_radius":             int  — limits ALL_*_IN_AREA results by hex distance.
+##   "aoe_center":             String — "caster" uses the caster's hex as center;
+##                                    otherwise defaults to target_hexes[0].
+##   "max_targets":            int  — caps result size; -1 = no cap.
+##   "exclude_primary_target": bool — drops target_hexes[0]'s occupant.
+static func resolve_effect_targets(effect: Dictionary, ctx: DuelContext) -> Array[Creature]:
+	var result: Array[Creature] = []
+	if ctx == null:
+		return result
+	var board: HexGrid = ctx.board
+	var target_hexes: Array = ctx.target_hexes
+	var effect_target: int = effect.get("target", CardTypes.EffectTarget.SELECTED)
+
+	if board == null:
+		return result
+
+	# Pick the AoE center hex for ALL_*_IN_AREA effects.
+	var aoe_center: Vector2i = Vector2i(-1, -1)
+	if effect.get("aoe_center", "") == "caster" and ctx.caster:
+		aoe_center = ctx.caster.hex_position
+	elif not target_hexes.is_empty():
+		aoe_center = target_hexes[0]
+	var aoe_radius: int = effect.get("aoe_radius", -1)
+
+	match effect_target:
+		CardTypes.EffectTarget.SELECTED:
+			for hex: Vector2i in target_hexes:
+				var tile: HexTileData = board.get_tile(hex)
+				if tile and tile.is_occupied() and tile.occupant is Creature:
+					result.append(tile.occupant as Creature)
+
+		CardTypes.EffectTarget.CASTER:
+			if ctx.caster:
+				result.append(ctx.caster)
+
+		CardTypes.EffectTarget.ALL_IN_AREA:
+			for coord: Vector2i in board.tiles:
+				var tile: HexTileData = board.tiles[coord]
+				if not tile.is_occupied() or not tile.occupant is Creature:
+					continue
+				if _passes_aoe_filter(coord, aoe_center, aoe_radius):
+					result.append(tile.occupant as Creature)
+
+		CardTypes.EffectTarget.ALL_ENEMIES_IN_AREA:
+			for coord: Vector2i in board.tiles:
+				var tile: HexTileData = board.tiles[coord]
+				if not tile.is_occupied() or not tile.occupant is Creature:
+					continue
+				var creature: Creature = tile.occupant as Creature
+				var is_opposing: bool = _is_opposing_side(creature, ctx)
+				if is_opposing and _passes_aoe_filter(coord, aoe_center, aoe_radius):
+					result.append(creature)
+
+		CardTypes.EffectTarget.ALL_ALLIES_IN_AREA:
+			for coord: Vector2i in board.tiles:
+				var tile: HexTileData = board.tiles[coord]
+				if not tile.is_occupied() or not tile.occupant is Creature:
+					continue
+				var creature: Creature = tile.occupant as Creature
+				var is_opposing: bool = _is_opposing_side(creature, ctx)
+				if not is_opposing and _passes_aoe_filter(coord, aoe_center, aoe_radius):
+					result.append(creature)
+
+		_:
+			for hex: Vector2i in target_hexes:
+				var tile: HexTileData = board.get_tile(hex)
+				if tile and tile.is_occupied() and tile.occupant is Creature:
+					result.append(tile.occupant as Creature)
+
+	if effect.get("exclude_primary_target", false) and not target_hexes.is_empty():
+		var primary_tile: HexTileData = board.get_tile(target_hexes[0])
+		if primary_tile and primary_tile.is_occupied():
+			result.erase(primary_tile.occupant as Creature)
+
+	var max_targets: int = effect.get("max_targets", -1)
+	if max_targets >= 0 and result.size() > max_targets:
+		result.resize(max_targets)
+
+	return result
+
+
+## Whether a hex passes the AoE radius filter.
+static func _passes_aoe_filter(coord: Vector2i, center: Vector2i, radius: int) -> bool:
+	if radius < 0:
+		return true
+	if center == Vector2i(-1, -1):
+		return true
+	return HexHelper.hex_distance(coord, center) <= radius
+
+
+## Whether a creature is on the opposite side from the effect's caster.
+## Without a caster (hand-played spell), falls back to treating EnemyCreatures
+## as the opposing side.
+static func _is_opposing_side(creature: Creature, ctx: DuelContext) -> bool:
+	if ctx.caster:
+		return ctx.caster.is_enemy() != creature.is_enemy()
+	return creature.is_enemy()
+
+
+## Execute this creature's heavy (special) attack against a target hex.
+## Reads the heavy_attack dict from card_data / enemy_data, plays the
+## appropriate animation (single or multi-phase), dispatches effects +
+## self_effects via the shared Card.apply_effect_list() dispatcher, and
+## starts the cooldown.
+##
+## Returns total damage dealt to the primary selected target (if any),
+## for use by callers that want to log or react to the result.
+func perform_heavy_attack(target_hex: Vector2i, hex_grid: HexGrid, ctx: DuelContext) -> int:
+	if not can_use_heavy_attack():
+		return 0
+
+	var spec: Dictionary = _get_heavy_attack_spec()
+	if spec.is_empty():
+		return 0
+
+	has_attacked = true
+
+	# Face the target for single-target flavor attacks.
+	if animated_sprite and target_hex != hex_position:
+		var world_target: Vector2 = HexHelper.hex_to_world(target_hex, hex_grid.hex_size)
+		var dir: Vector2 = world_target - position
+		if dir.x != 0.0:
+			animated_sprite.flip_h = dir.x < 0.0
+
+	# Play the animation. Multi-phase (start → loop → end) for creatures
+	# like the Minotaur; single-phase for the rest.
+	var anim_sequence: Array = spec.get("animation_sequence", [])
+	if anim_sequence.size() >= 3 and state_machine:
+		await _play_heavy_attack_sequence(anim_sequence)
+	elif state_machine:
+		var anim_name: StringName = spec.get("animation", &"heavy_attack")
+		state_machine.play_attack(anim_name)
+		await state_machine.attack_hit
+
+	# Stamp caster + target onto the context for effect resolution.
+	if ctx:
+		ctx.set_targets([target_hex], [], self)
+
+	# Resolve primary effects, then self_effects (which always target CASTER).
+	var effects: Array = spec.get("effects", [])
+	apply_effect_list(effects, ctx)
+
+	var self_effects: Array = spec.get("self_effects", [])
+	if not self_effects.is_empty():
+		# Self-effects always resolve on the caster regardless of their
+		# "target" field. Force it to CASTER so existing dispatch works.
+		var rebound: Array = []
+		for e: Dictionary in self_effects:
+			var copy: Dictionary = e.duplicate()
+			copy["target"] = CardTypes.EffectTarget.CASTER
+			rebound.append(copy)
+		apply_effect_list(rebound, ctx)
+
+	# Tally damage dealt to the primary target, if any.
+	var primary_damage: int = 0
+	var primary_tile: HexTileData = hex_grid.get_tile(target_hex)
+	if primary_tile and primary_tile.is_occupied() and primary_tile.occupant is Creature:
+		# Best-effort — real damage number was already applied inside
+		# creature.take_damage(). Caller can read primary.current_hp if
+		# exact accounting is needed.
+		primary_damage = 1
+
+	# Start cooldown and refresh UI.
+	start_heavy_attack_cooldown()
+	if _stats_bar:
+		_stats_bar.refresh()
+
+	# Wait for animation finish for visual completeness.
+	if state_machine and state_machine.current_state == CreatureStateMachine.State.ATTACKING:
+		await state_machine.animation_finished
+
+	# Clear transient context state we stamped.
+	if ctx:
+		ctx.clear_transient()
+
+	return primary_damage
+
+
+## Play a multi-phase heavy-attack sequence (e.g. minotaur start → loop → end).
+##
+## This drives the AnimatedSprite2D directly instead of routing every phase
+## through the state machine, for two reasons:
+##
+##   1. Some phases (like the Minotaur's spin loop) have loop=true on their
+##      SpriteFrames entry. Godot never emits animation_finished for looping
+##      animations, so awaiting the state machine's animation_finished would
+##      hang forever. We drive those phases off a frame-count timer instead.
+##
+##   2. The state machine's transition_to() early-returns on same-state
+##      transitions. Calling state_machine.play_attack() while already in
+##      ATTACKING leaves the previous sprite animation playing. We'd never
+##      advance past the middle phase.
+##
+## We enter ATTACKING once at the start and let the state machine exit back
+## to IDLE naturally when the final (non-looping) phase's sprite animation
+## finishes. Effects fire at the impact moment of the final phase.
+func _play_heavy_attack_sequence(sequence: Array) -> void:
+	if state_machine == null or animated_sprite == null or animated_sprite.sprite_frames == null:
+		return
+	var sf: SpriteFrames = animated_sprite.sprite_frames
+
+	# Enter ATTACKING state once (plays phase 1 via the state machine so
+	# has_used_active, click gating, etc. all see ATTACKING correctly).
+	state_machine.play_attack(sequence[0])
+	# Phase 1 is non-looping — wait for its sprite animation to finish.
+	await animated_sprite.animation_finished
+	# Completing phase 1 causes the state machine's _on_sprite_animation_finished
+	# to transition us back to IDLE. That's expected; subsequent phases play
+	# the sprite directly, keeping the state machine out of the way.
+
+	# Phase 2: spin loop. Bypass the state machine and play directly.
+	if sf.has_animation(sequence[1]):
+		animated_sprite.play(sequence[1])
+		await get_tree().create_timer(_anim_duration(sequence[1])).timeout
+
+	# Phase 3: impact. Play directly; wait ~until the hit frame (~1/3 through)
+	# so the caller can apply effects in sync with the visual impact. The
+	# remaining frames play out on their own after this function returns.
+	if sf.has_animation(sequence[2]):
+		animated_sprite.play(sequence[2])
+		var hit_delay: float = _anim_duration(sequence[2]) * 0.33
+		await get_tree().create_timer(hit_delay).timeout
+
+
+## Return the duration in seconds of a named animation on this creature's
+## SpriteFrames. Returns 0 if the animation doesn't exist or has no speed.
+func _anim_duration(anim_name: StringName) -> float:
+	if animated_sprite == null or animated_sprite.sprite_frames == null:
+		return 0.0
+	var sf: SpriteFrames = animated_sprite.sprite_frames
+	if not sf.has_animation(anim_name):
+		return 0.0
+	var count: int = sf.get_frame_count(anim_name)
+	var speed: float = sf.get_animation_speed(anim_name)
+	if speed <= 0.0:
+		return 0.0
+	return float(count) / speed
+
+
+## Look up the heavy_attack dict from whichever data resource backs this
+## creature (CardData for summoned creatures, EnemyData for enemies).
+## Returns empty dict if the creature has no heavy attack.
+func _get_heavy_attack_spec() -> Dictionary:
+	# Enemies read from enemy_data; player creatures read from card_data.
+	# Both fields are Dictionary so we can probe either without type errors.
+	if self is EnemyCreature:
+		var enemy_data: EnemyData = (self as EnemyCreature).enemy_data
+		if enemy_data:
+			return enemy_data.heavy_attack
+	if card_data and &"heavy_attack" in card_data:
+		var spec: Variant = card_data.get(&"heavy_attack")
+		if spec is Dictionary:
+			return spec
+	return {}
+
+
+## Whether this creature is a ranged attacker — true if attack_range > 1
+## OR if it carries the RANGED keyword. Drives the perform_attack() branch
+## that skips the approach/return walk, so archers/mages fire in place
+## instead of walking into melee range every turn.
+func is_ranged_attacker() -> bool:
+	if attack_range > 1:
+		return true
+	# Keywords live on either CardData or EnemyData depending on unit type.
+	if card_data and CardTypes.Keyword.RANGED in card_data.keywords:
+		return true
+	if self is EnemyCreature:
+		var ed: EnemyData = (self as EnemyCreature).enemy_data
+		if ed and CardTypes.Keyword.RANGED in ed.keywords:
+			return true
+	return false
+
+
+## Randomly pick between attack01 and attack02 for basic-attack visual variety.
+## Falls back to attack01 alone if attack02 isn't in this creature's SpriteFrames.
+func _pick_basic_attack_anim() -> StringName:
+	if animated_sprite == null or animated_sprite.sprite_frames == null:
+		return &"attack01"
+	var sf: SpriteFrames = animated_sprite.sprite_frames
+	var has01: bool = sf.has_animation(&"attack01")
+	var has02: bool = sf.has_animation(&"attack02")
+	if has01 and has02:
+		return &"attack02" if randf() < 0.5 else &"attack01"
+	if has02 and not has01:
+		return &"attack02"
+	return &"attack01"
 
 
 ## Restore HP, clamped to max.
@@ -735,8 +1336,20 @@ func modify_armor(delta: int) -> void:
 ## Move this creature to a new hex with walk animation and tween.
 ## The creature plays the walk animation, tweens to the destination,
 ## then returns to idle.
-func move_to(new_hex: Vector2i, hex_size: float) -> void:
+## Move this creature to a new hex with walk animation and tween.
+##
+## If `ctx` is provided, fires deployable on_creature_exit / on_creature_enter
+## hooks at the old and new hex so objects on tiles can react to the movement
+## (e.g. the Axed Marauder stepping back onto his own thrown axe picks it up).
+func move_to(new_hex: Vector2i, hex_size: float, ctx: DuelContext = null) -> void:
 	var old_hex: Vector2i = hex_position
+
+	# Fire exit hooks at the old hex BEFORE updating hex_position so the
+	# deployable sees the creature still on its tile during the callback.
+	if ctx and ctx.deployables:
+		for d: DuelDeployable in ctx.deployables.at_hex(old_hex):
+			d.on_creature_exit(self, ctx)
+
 	hex_position = new_hex
 	has_moved = true
 
@@ -753,20 +1366,28 @@ func move_to(new_hex: Vector2i, hex_size: float) -> void:
 
 	# Tween to the target position.
 	var tween: Tween = create_tween().set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_CUBIC)
-	tween.tween_property(self, "position", target_pos, 1.5)  # DEBUG: was 0.4
+	tween.tween_property(self, "position", target_pos, 0.4)
 	await tween.finished
 
 	# Stop walking, return to idle.
 	if state_machine:
 		state_machine.stop_walking()
 
-	# Update z-order for new row.
-	z_index = new_hex.y * 3 + 2
+	# Update z-order for new row (see initialize() for band rationale).
+	z_index = HexTileRenderer.Z_BAND_OBJECTS + new_hex.y * 3 + 2
 
 	moved.emit(self, old_hex, new_hex)
 	check_passive_triggers(CardTypes.TriggerType.ON_MOVE, {
 		"creature": self, "from_hex": old_hex, "to_hex": new_hex,
 	})
+
+	# Fire enter hooks at the new hex AFTER the move lands. A deployable's
+	# on_creature_enter can call pick_up(self, ctx) to remove itself from
+	# the board — that's the axe pickup flow.
+	if ctx and ctx.deployables:
+		# Duplicate the list since pickup mutates the registry during iteration.
+		for d: DuelDeployable in ctx.deployables.at_hex(new_hex).duplicate():
+			d.on_creature_enter(self, ctx)
 
 
 # =============================================================================
@@ -798,7 +1419,22 @@ func has_status(effect: CardTypes.StatusEffect) -> bool:
 
 
 ## Tick down status durations. Called at start of turn.
+## Also applies per-turn damage-over-time effects (BURNING, POISONED, BLEEDING).
+## By default these deal 1 HP each tick — can be extended later with
+## per-creature intensity stacking.
 func _tick_status_effects() -> void:
+	# -- Damage-over-time effects: apply damage before decrementing duration --
+	if has_status(CardTypes.StatusEffect.BURNING):
+		take_damage(1, CardTypes.DamageType.FIRE)
+	if has_status(CardTypes.StatusEffect.POISONED):
+		take_damage(1, CardTypes.DamageType.POISON)
+	# BLEEDING is documented as movement-based ("takes damage when moving"),
+	# so we intentionally do NOT tick it here — it fires from the movement path.
+
+	# Early exit if the DoT killed us — no point ticking further.
+	if not is_alive():
+		return
+
 	var expired: Array[CardTypes.StatusEffect] = []
 	for effect: CardTypes.StatusEffect in status_effects:
 		var remaining: int = status_effects[effect]

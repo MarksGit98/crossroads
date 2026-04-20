@@ -43,6 +43,12 @@ var creatures_node: Node2D
 ## The active gamemode (Team Deathmatch, Capture the Flag, …).
 var gamemode: GamemodeTypes.Mode = GamemodeTypes.DEFAULT_MODE
 
+## Registry of all deployables currently on the board (thrown axes, traps,
+## summoned zones, etc.). Subsystems query this to ask "what's on hex X?"
+## or "who owns this object?" rather than tracking deployables in their own
+## ad hoc structures. One registry per duel, created in configure().
+var deployables: DeployableRegistry = null
+
 
 # =============================================================================
 # Transient Per-Action Data
@@ -85,6 +91,9 @@ func configure(
 	creatures_node = p_creatures_node
 	gamemode = p_gamemode
 	enemy_player = p_enemy_player
+	# Fresh registry per duel. Lives for the duel's lifetime and is cleared
+	# when the duel ends (implicitly — the whole DuelContext goes out of scope).
+	deployables = DeployableRegistry.new()
 
 
 # =============================================================================

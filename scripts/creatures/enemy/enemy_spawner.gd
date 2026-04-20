@@ -41,23 +41,51 @@ func spawn_enemies(combat_count: int, hex_grid: HexGrid, creature_parent: Node2D
 	spawn_hexes.shuffle()
 
 	var spawned: Array[EnemyCreature] = []
+
+	# For the current test build we always plant one Minotaur as a legendary
+	# encounter. Uses the first available spawn hex so he lands somewhere
+	# visible; the remaining hexes feed the random pool below.
+	if not spawn_hexes.is_empty():
+		var minotaur_data: EnemyData = EnemyData_Minotaur.data()
+		var minotaur: EnemyCreature = spawn_one_at(minotaur_data, hex_grid, creature_parent, spawn_hexes[0])
+		if minotaur:
+			spawned.append(minotaur)
+			spawn_hexes.remove_at(0)
+
 	var count: int = mini(enemy_count, spawn_hexes.size())
 
 	for i: int in range(count):
 		var data: EnemyData = _pick_random_enemy(include_elite)
-		var scene: PackedScene = load(data.creature_scene_path)
-		var enemy: EnemyCreature = scene.instantiate() as EnemyCreature
-		creature_parent.add_child(enemy)
-		enemy.initialize_enemy(data, spawn_hexes[i], hex_grid.hex_size)
-
-		# Register occupancy on the grid.
-		var tile: HexTileData = hex_grid.get_tile(spawn_hexes[i])
-		if tile:
-			tile.occupant = enemy
-
-		spawned.append(enemy)
+		var enemy: EnemyCreature = spawn_one_at(data, hex_grid, creature_parent, spawn_hexes[i])
+		if enemy:
+			spawned.append(enemy)
 
 	return spawned
+
+
+## Spawn a specific enemy at a specific hex. Returns the spawned instance
+## (or null on failure). Used both by the random spawner above and by
+## bosses/scripted encounters that need to plant a known enemy at a known
+## location.
+func spawn_one_at(data: EnemyData, hex_grid: HexGrid, creature_parent: Node2D, hex: Vector2i) -> EnemyCreature:
+	if data == null or data.creature_scene_path == "":
+		return null
+	var scene: PackedScene = load(data.creature_scene_path) as PackedScene
+	if scene == null:
+		push_warning("EnemySpawner: failed to load scene '%s'" % data.creature_scene_path)
+		return null
+	var enemy: EnemyCreature = scene.instantiate() as EnemyCreature
+	if enemy == null:
+		return null
+	creature_parent.add_child(enemy)
+	enemy.initialize_enemy(data, hex, hex_grid.hex_size)
+
+	# Register occupancy on the grid.
+	var tile: HexTileData = hex_grid.get_tile(hex)
+	if tile:
+		tile.occupant = enemy
+
+	return enemy
 
 
 ## Determine how many enemies to spawn based on combat count.

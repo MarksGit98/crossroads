@@ -29,16 +29,18 @@ static func data() -> CardData:
 	# Keywords
 	card.keywords = [CardTypes.Keyword.GUARD, CardTypes.Keyword.TAUNT]
 
-	# Passives — armor aura for adjacent allies
+	# Passives — armor aura for adjacent allies. No upgrade yet.
 	card.passives = [
 		{
-			"id": "holy_bulwark",
-			"name": "Holy Bulwark",
-			"type": CardTypes.PassiveType.STAT_AURA,
-			"stat": CardTypes.Stat.ARMOR,
-			"value": 1,
-			"range": 1,
-			"target": "allies",
+			"regular": {
+				"id": "holy_bulwark",
+				"name": "Holy Bulwark",
+				"type": CardTypes.PassiveType.STAT_AURA,
+				"stat": CardTypes.Stat.ARMOR,
+				"value": 1,
+				"range": 1,
+				"target": "allies",
+			},
 		},
 	]
 

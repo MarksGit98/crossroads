@@ -72,8 +72,10 @@ func initialize_enemy(data: EnemyData, hex: Vector2i, hex_size: float) -> void:
 	hex_position = hex
 	position = HexHelper.hex_to_world(hex, hex_size) + Vector2(0, HexTileRenderer.DEPTH_OFFSET)
 
-	# Z-order: creatures render above ground and middle tiles at the same row.
-	z_index = hex.y * 3 + 2
+	# Z-order: enemies sit in the objects band alongside player creatures
+	# (see HexTileRenderer.Z_BAND_OBJECTS) so ground tiles never overlap
+	# them regardless of row. Row-based sub-sort preserves the 2.5D feel.
+	z_index = HexTileRenderer.Z_BAND_OBJECTS + hex.y * 3 + 2
 
 	# Scale the creature to fit the hex.
 	_apply_creature_scale(hex_size)
@@ -82,9 +84,15 @@ func initialize_enemy(data: EnemyData, hex: Vector2i, hex_size: float) -> void:
 	if _intent_label and scale.x != 0.0:
 		_intent_label.scale = Vector2(1.0 / scale.x, 1.0 / scale.y)
 
-	# Flip sprite so enemies face left (toward the player side).
+	# Orient the sprite to face the player. Most sprite sheets are authored
+	# facing right, so flipping horizontally points them at the player's
+	# side of the board (left). Art that's already drawn facing left (e.g.
+	# Minotaur) sets sprite_faces_left=true and skips the flip. We cache
+	# the resting value so perform_attack() can restore it after its
+	# approach-and-return animation.
+	_default_sprite_flip_h = not data.sprite_faces_left
 	if animated_sprite:
-		animated_sprite.flip_h = true
+		animated_sprite.flip_h = _default_sprite_flip_h
 
 	# Initialize the state machine.
 	if state_machine:
@@ -93,6 +101,13 @@ func initialize_enemy(data: EnemyData, hex: Vector2i, hex_size: float) -> void:
 	else:
 		if animated_sprite and animated_sprite.sprite_frames and animated_sprite.sprite_frames.has_animation(&"idle"):
 			animated_sprite.play(&"idle")
+
+	# Detect heavy-attack support based on SpriteFrames content, then start
+	# the cooldown at its full length so enemies cannot open the fight with
+	# their ultimate on turn 1 — players need a window to set up.
+	_detect_heavy_attack_support()
+	if has_heavy_attack:
+		start_heavy_attack_cooldown()
 
 	# Create overhead labels (name + HP) and intent indicator.
 	_create_overhead_labels()

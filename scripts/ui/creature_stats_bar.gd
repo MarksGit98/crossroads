@@ -23,6 +23,8 @@ const ICON_ATTACK: Texture2D = preload("res://assets/creatures/stats/attack.png"
 const ICON_ARMOR: Texture2D = preload("res://assets/creatures/stats/armor.png")
 const ICON_RANGE: Texture2D = preload("res://assets/creatures/stats/range.png")
 const ICON_SLOW: Texture2D = preload("res://assets/creatures/stats/slow.png")
+const ICON_BURN: Texture2D = preload("res://assets/creatures/stats/burn.png")
+const ICON_ULT_COOLDOWN: Texture2D = preload("res://assets/creatures/stats/ult_cooldown.png")
 
 
 # =============================================================================
@@ -58,8 +60,12 @@ const NAME_LABEL_GAP: float = 4.0
 # Slot enum — index into _slots
 # =============================================================================
 
-enum Slot { HEALTH, ATTACK, ARMOR, RANGE, SLOW }
-const SLOT_COUNT: int = 5
+## Ordered left-to-right on the overhead bar. HEALTH / ATTACK are always
+## visible. ULT_COOLDOWN sits immediately after ATTACK and is visible for
+## any creature that has a heavy attack (regardless of whether it's ready
+## or on cooldown). The remaining slots surface only when relevant.
+enum Slot { HEALTH, ATTACK, ULT_COOLDOWN, ARMOR, RANGE, SLOW, BURN }
+const SLOT_COUNT: int = 7
 
 
 # =============================================================================
@@ -107,9 +113,11 @@ func _build_slots() -> void:
 	_slots.resize(SLOT_COUNT)
 	_slots[Slot.HEALTH] = _make_slot(ICON_HEALTH, Color(1.0, 0.85, 0.85))
 	_slots[Slot.ATTACK] = _make_slot(ICON_ATTACK, Color(1.0, 0.95, 0.8))
+	_slots[Slot.ULT_COOLDOWN] = _make_slot(ICON_ULT_COOLDOWN, Color(1.0, 0.9, 0.5))
 	_slots[Slot.ARMOR] = _make_slot(ICON_ARMOR, Color(0.85, 0.9, 1.0))
 	_slots[Slot.RANGE] = _make_slot(ICON_RANGE, Color(0.85, 1.0, 0.9))
 	_slots[Slot.SLOW] = _make_slot(ICON_SLOW, Color(0.85, 0.9, 1.0))
+	_slots[Slot.BURN] = _make_slot(ICON_BURN, Color(1.0, 0.75, 0.5))
 
 
 ## Create one icon + label child pair. The label sits as a child of the icon
@@ -217,6 +225,15 @@ func _refresh() -> void:
 	var slowed_turns: int = _creature.status_effects.get(CardTypes.StatusEffect.SLOWED, 0)
 	var slow_turns: int = maxi(chilled_turns, slowed_turns)
 	_set_slot(Slot.SLOW, slow_turns > 0, str(slow_turns))
+
+	# -- Burn: visible when BURNING is applied — shows remaining turns --
+	var burn_turns: int = _creature.status_effects.get(CardTypes.StatusEffect.BURNING, 0)
+	_set_slot(Slot.BURN, burn_turns > 0, str(burn_turns))
+
+	# -- Ultimate cooldown: permanent slot for any creature with a heavy
+	# attack. Shows current cooldown (0 = ready) as a label on the icon so
+	# the player always knows at a glance who has a special and when.
+	_set_slot(Slot.ULT_COOLDOWN, _creature.has_heavy_attack, str(_creature.heavy_attack_cd_remaining))
 
 	_layout_slots()
 

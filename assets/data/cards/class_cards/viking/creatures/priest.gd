@@ -29,19 +29,22 @@ static func data() -> CardData:
 	# Keywords
 	card.keywords = []
 
-	# Active: Heal — restore 3 HP to an adjacent ally.
+	# Active: Heal — restore 3 HP to an adjacent ally. No upgrade yet.
 	card.actives = [{
-		"name": "Holy Light",
-		"description": "Restore 3 HP to an adjacent ally.",
-		"cooldown": 2,
-		"cost_type": CardTypes.CostType.MANA,
-		"cost_value": 1,
-		"target_rule": CardTypes.TargetRule.ADJACENT_ALLY,
-		"effects": [{
-			"type": CardTypes.EffectType.HEAL,
-			"value": 3,
-			"target": CardTypes.EffectTarget.SELECTED,
-		}],
+		"regular": {
+			"name": "Holy Light",
+			"description": "Restore 3 HP to an adjacent ally.",
+			"cooldown": 2,
+			"cost_type": CardTypes.CostType.MANA,
+			"cost_value": 1,
+			"target_rule": CardTypes.TargetRule.ADJACENT_ALLY,
+			"effects": [{
+				"type": CardTypes.EffectType.HEAL,
+				"value": 3,
+				"target": CardTypes.EffectTarget.SELECTED,
+			}],
+		},
+		# No upgraded variant yet — accessor falls back to regular.
 	}]
 
 	# Creature scene

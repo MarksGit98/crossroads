@@ -287,8 +287,10 @@ func _handle_move_target_click(coord: Vector2i) -> void:
 	if new_tile:
 		new_tile.occupant = _selected_creature
 
-	# Animate the move (awaited — creature tweens to the new hex).
-	_selected_creature.move_to(coord, hex_grid.hex_size)
+	# Animate the move (awaited — creature tweens to the new hex). Pass ctx
+	# so deployables on the old/new hex can fire their enter/exit hooks
+	# (e.g. axe pickup).
+	_selected_creature.move_to(coord, hex_grid.hex_size, ctx)
 
 	# After move completes, clean up. Use a tween callback since move_to uses await.
 	# We wait a frame longer than the tween duration to be safe.
@@ -361,7 +363,9 @@ func _enter_active_targeting(ability_index: int) -> void:
 		return
 
 	_active_ability_index = ability_index
-	var ability: Dictionary = _selected_creature.card_data.actives[_active_ability_index]
+	# Go through the creature's variant-aware accessor so an upgraded
+	# Wizard picks up Arcane Blast+ rules (range, target_rule, etc.).
+	var ability: Dictionary = _selected_creature.get_active(_active_ability_index)
 	var target_rule: int = ability.get("target_rule", CardTypes.TargetRule.ANY_HEX)
 
 	# SELF-targeting abilities execute immediately without a targeting phase.

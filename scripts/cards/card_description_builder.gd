@@ -41,8 +41,10 @@ static func build_spell_description(data: CardData) -> String:
 static func build_equip_description(data: CardData) -> String:
 	var parts: PackedStringArray = []
 
-	# Passive lines (stat modifiers from passives).
-	for passive: Dictionary in data.passives:
+	# Passive lines (stat modifiers from passives). Resolve variants so an
+	# upgraded equip card's face shows its upgraded passive values.
+	var passives: Array = CardData.resolve_variants(data.passives, data.is_upgraded)
+	for passive: Dictionary in passives:
 		var line: String = format_passive(passive)
 		if line != "":
 			parts.append(line)

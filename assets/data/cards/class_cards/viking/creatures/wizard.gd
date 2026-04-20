@@ -29,41 +29,66 @@ static func data() -> CardData:
 	# Keywords
 	card.keywords = [CardTypes.Keyword.RANGED]
 
-	# Actives — arcane blast: AoE damage on a targeted hex
-	#         — arcane anchor: mark current hex as a valid spawn location
+	# Actives — variant-grouped so upgraded Wizards use buffed versions.
+	# Upgrade currently just adds +1 damage to Arcane Blast and cuts its
+	# cooldown to 1; Arcane Anchor has no upgraded variant yet (falls back
+	# to regular automatically).
 	card.actives = [
 		{
-			"id": "arcane_blast",
-			"name": "Arcane Blast",
-			"description": "Unleash a burst of arcane energy at a target hex, dealing 3 MAGICAL damage to all units within 1 hex.",
-			"cost": 2,
-			"range": 3,
-			"cooldown": 2,
-			"target_rule": CardTypes.TargetRule.ANY_HEX,
-			"effects": [
-				{
-					"type": CardTypes.EffectType.DEAL_DAMAGE,
-					"target": CardTypes.EffectTarget.ALL_IN_AREA,
-					"damage_type": CardTypes.DamageType.MAGICAL,
-					"value": 3,
-					"aoe_radius": 1,
-				},
-			],
+			"regular": {
+				"id": "arcane_blast",
+				"name": "Arcane Blast",
+				"description": "Unleash a burst of arcane energy at a target hex, dealing 3 MAGICAL damage to all units within 1 hex.",
+				"cost": 2,
+				"range": 3,
+				"cooldown": 2,
+				"target_rule": CardTypes.TargetRule.ANY_HEX,
+				"effects": [
+					{
+						"type": CardTypes.EffectType.DEAL_DAMAGE,
+						"target": CardTypes.EffectTarget.ALL_IN_AREA,
+						"damage_type": CardTypes.DamageType.MAGICAL,
+						"value": 3,
+						"aoe_radius": 1,
+					},
+				],
+			},
+			"upgraded": {
+				"id": "arcane_blast_plus",
+				"name": "Arcane Blast+",
+				"description": "Unleash a surge of arcane energy at a target hex, dealing 4 MAGICAL damage to all units within 1 hex.",
+				"cost": 2,
+				"range": 3,
+				"cooldown": 1,
+				"target_rule": CardTypes.TargetRule.ANY_HEX,
+				"effects": [
+					{
+						"type": CardTypes.EffectType.DEAL_DAMAGE,
+						"target": CardTypes.EffectTarget.ALL_IN_AREA,
+						"damage_type": CardTypes.DamageType.MAGICAL,
+						"value": 4,
+						"aoe_radius": 1,
+					},
+				],
+			},
 		},
 		{
-			"id": "arcane_anchor",
-			"name": "Arcane Anchor",
-			"description": "Mark the Wizard's hex as a valid summon location. Allies may be summoned here in future turns.",
-			"cost": 0,
-			"range": 0,
-			"cooldown": 3,
-			"target_rule": CardTypes.TargetRule.SELF,
-			"effects": [
-				{
-					"type": CardTypes.EffectType.MARK_SPAWN,
-					"target": CardTypes.EffectTarget.CASTER,
-				},
-			],
+			"regular": {
+				"id": "arcane_anchor",
+				"name": "Arcane Anchor",
+				"description": "Mark the Wizard's hex as a valid summon location. Allies may be summoned here in future turns.",
+				"cost": 0,
+				"range": 0,
+				"cooldown": 3,
+				"target_rule": CardTypes.TargetRule.SELF,
+				"effects": [
+					{
+						"type": CardTypes.EffectType.MARK_SPAWN,
+						"target": CardTypes.EffectTarget.CASTER,
+					},
+				],
+			},
+			# No upgraded variant — accessor falls back to regular.
 		},
 	]
 

@@ -37,11 +37,71 @@ extends Resource
 # --- Keywords ---
 @export var keywords: Array[CardTypes.Keyword] = []
 
+# --- Upgrade state ---
+##
+## Whether this card has been upgraded during the current run. Cards start
+## un-upgraded at boot; upgrading is triggered by shop purchases, card
+## rewards, in-duel effects that target the card, etc. When true, creatures
+## spawned from this card use the "upgraded" variant of each active/passive
+## (see resolve_variant below), and other systems (card art tinting, card
+## description text, shop "already upgraded" filters) can branch on this flag.
+##
+## CardDatabase caches one CardData per card_id and all deck references
+## point at that shared instance, so setting this flag during a run applies
+## to every copy of the card in the player's deck for the rest of the run.
+@export var is_upgraded: bool = false
+
 # --- Passives ---
+##
+## Each entry is either:
+##   A) Variant-grouped (preferred for cards that support upgrades):
+##        { "regular":  { ...full passive dict... },
+##          "upgraded": { ...full passive dict... } }
+##      Leave "upgraded" out if the passive doesn't change when upgraded.
+##
+##   B) Flat (legacy / no-upgrade cards): the dict IS the passive directly.
+##
+## Callers go through CardData.resolve_variants() (or Creature.get_passives())
+## to materialize the correct set based on the creature's upgraded state.
 @export var passives: Array[Dictionary] = []
 
 # --- Actives ---
+##
+## Same variant-grouped schema as passives. Each entry is either
+## { "regular": {...}, "upgraded": {...} } OR a flat active dict.
 @export var actives: Array[Dictionary] = []
 
 # --- Spell effects (top-level for spell cards) ---
 @export var effects: Array[Dictionary] = []
+
+
+# =============================================================================
+# Variant resolution
+# =============================================================================
+
+## Pick the correct variant of a single active/passive entry.
+##  - If entry has "regular"/"upgraded" keys, pick based on `upgraded`.
+##  - If only one of the two is defined, prefer the defined one.
+##  - If entry is in the flat (legacy) format, return it unchanged.
+static func resolve_variant(entry: Dictionary, upgraded: bool) -> Dictionary:
+	var has_regular: bool = entry.has("regular")
+	var has_upgraded: bool = entry.has("upgraded")
+	if not has_regular and not has_upgraded:
+		# Legacy flat dict — already the ability itself.
+		return entry
+	if upgraded and has_upgraded:
+		return entry["upgraded"]
+	if has_regular:
+		return entry["regular"]
+	# upgraded=false but only upgraded was defined — fall back.
+	return entry["upgraded"]
+
+
+## Apply resolve_variant() across a whole list. Always safe to call on any
+## actives/passives array regardless of whether it uses the variant or flat
+## format — flat entries pass through unchanged.
+static func resolve_variants(entries: Array, upgraded: bool) -> Array:
+	var result: Array = []
+	for entry: Dictionary in entries:
+		result.append(resolve_variant(entry, upgraded))
+	return result
