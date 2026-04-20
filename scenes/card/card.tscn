@@ -1,10 +1,10 @@
 [gd_scene format=3 uid="uid://c2d0o3140vgad"]
 
 [ext_resource type="Script" uid="uid://bu2oajam4th0m" path="res://scripts/cards/card.gd" id="1_imta7"]
-[ext_resource type="Texture2D" uid="uid://1jv4cvfb4ijy" path="res://sample images/Viking-Creature-Card-Example.png" id="2_imta7"]
+[ext_resource type="Texture2D" uid="uid://c1nukqauvc878" path="res://assets/cards/creatures/creature_template.png" id="2_imta7"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_imta7"]
-size = Vector2(291, 400)
+size = Vector2(192, 262)
 
 [node name="Card" type="Node2D" unique_id=198352323]
 script = ExtResource("1_imta7")

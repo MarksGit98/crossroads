@@ -25,6 +25,9 @@ const ICON_RANGE: Texture2D = preload("res://assets/creatures/stats/range.png")
 const ICON_SLOW: Texture2D = preload("res://assets/creatures/stats/slow.png")
 const ICON_BURN: Texture2D = preload("res://assets/creatures/stats/burn.png")
 const ICON_ULT_COOLDOWN: Texture2D = preload("res://assets/creatures/stats/ult_cooldown.png")
+## Axe icon for the CHARGES slot. Reused from the thrown-axe deployable art
+## so the overhead bar's ammo indicator matches the projectile on the board.
+const ICON_CHARGES: Texture2D = preload("res://assets/deployables/axe/axe.png")
 
 
 # =============================================================================
@@ -63,9 +66,11 @@ const NAME_LABEL_GAP: float = 4.0
 ## Ordered left-to-right on the overhead bar. HEALTH / ATTACK are always
 ## visible. ULT_COOLDOWN sits immediately after ATTACK and is visible for
 ## any creature that has a heavy attack (regardless of whether it's ready
-## or on cooldown). The remaining slots surface only when relevant.
-enum Slot { HEALTH, ATTACK, ULT_COOLDOWN, ARMOR, RANGE, SLOW, BURN }
-const SLOT_COUNT: int = 7
+## or on cooldown). CHARGES sits next, visible for any creature with
+## deployable_charges entries (Axed Marauder's axes etc). The remaining
+## slots surface only when relevant.
+enum Slot { HEALTH, ATTACK, ULT_COOLDOWN, CHARGES, ARMOR, RANGE, SLOW, BURN }
+const SLOT_COUNT: int = 8
 
 
 # =============================================================================
@@ -114,6 +119,7 @@ func _build_slots() -> void:
 	_slots[Slot.HEALTH] = _make_slot(ICON_HEALTH, Color(1.0, 0.85, 0.85))
 	_slots[Slot.ATTACK] = _make_slot(ICON_ATTACK, Color(1.0, 0.95, 0.8))
 	_slots[Slot.ULT_COOLDOWN] = _make_slot(ICON_ULT_COOLDOWN, Color(1.0, 0.9, 0.5))
+	_slots[Slot.CHARGES] = _make_slot(ICON_CHARGES, Color(1.0, 0.95, 0.85))
 	_slots[Slot.ARMOR] = _make_slot(ICON_ARMOR, Color(0.85, 0.9, 1.0))
 	_slots[Slot.RANGE] = _make_slot(ICON_RANGE, Color(0.85, 1.0, 0.9))
 	_slots[Slot.SLOW] = _make_slot(ICON_SLOW, Color(0.85, 0.9, 1.0))
@@ -234,6 +240,15 @@ func _refresh() -> void:
 	# attack. Shows current cooldown (0 = ready) as a label on the icon so
 	# the player always knows at a glance who has a special and when.
 	_set_slot(Slot.ULT_COOLDOWN, _creature.has_heavy_attack, str(_creature.heavy_attack_cd_remaining))
+
+	# -- Charges: sum of all deployable_charges entries (usually just axes
+	# for the Axed Marauder, but the same slot serves any future ammo-style
+	# mechanic). Visible only when the creature actually has charges.
+	var total_charges: int = 0
+	for count: int in _creature.deployable_charges.values():
+		total_charges += count
+	var has_any_charge_mechanic: bool = not _creature.deployable_charges.is_empty()
+	_set_slot(Slot.CHARGES, has_any_charge_mechanic, str(total_charges))
 
 	_layout_slots()
 

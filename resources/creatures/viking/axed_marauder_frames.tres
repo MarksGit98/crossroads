@@ -1,0 +1,198 @@
+[gd_resource type="SpriteFrames" format=3]
+
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Idle/Idle1.png" id="idle_1"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Idle/Idle2.png" id="idle_2"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Idle/Idle3.png" id="idle_3"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Idle/Idle4.png" id="idle_4"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Idle/Idle5.png" id="idle_5"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Idle/Idle6.png" id="idle_6"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Run/Run1.png" id="walk_1"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Run/Run2.png" id="walk_2"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Run/Run3.png" id="walk_3"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Run/Run4.png" id="walk_4"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Run/Run5.png" id="walk_5"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Run/Run6.png" id="walk_6"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Run/Run7.png" id="walk_7"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Run/Run8.png" id="walk_8"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Attack/Attack1.png" id="attack01_1"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Attack/Attack2.png" id="attack01_2"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Attack/Attack3.png" id="attack01_3"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Attack/Attack4.png" id="attack01_4"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Attack/Attack5.png" id="attack01_5"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Attack/Attack6.png" id="attack01_6"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Attack/Attack7.png" id="attack01_7"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Attack/Attack8.png" id="attack01_8"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Attack/Attack9.png" id="attack01_9"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Attack/Attack10.png" id="attack01_10"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Attack/Attack11.png" id="attack01_11"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Attack/Attack12.png" id="attack01_12"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Attack/Attack13.png" id="attack01_13"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Hurt/Hurt1.png" id="hurt_1"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Hurt/Hurt2.png" id="hurt_2"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Hurt/Hurt3.png" id="hurt_3"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Death/Death1.png" id="death_1"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Death/Death2.png" id="death_2"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Death/Death3.png" id="death_3"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Death/Death4.png" id="death_4"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Death/Death5.png" id="death_5"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Death/Death6.png" id="death_6"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Death/Death7.png" id="death_7"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Death/Death8.png" id="death_8"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Death/Death9.png" id="death_9"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Death/Death10.png" id="death_10"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Death/Death11.png" id="death_11"]
+[ext_resource type="Texture2D" path="res://assets/creatures/axed_marauder/animations/Death/Death12.png" id="death_12"]
+
+[resource]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("idle_1")
+}, {
+"duration": 1.0,
+"texture": ExtResource("idle_2")
+}, {
+"duration": 1.0,
+"texture": ExtResource("idle_3")
+}, {
+"duration": 1.0,
+"texture": ExtResource("idle_4")
+}, {
+"duration": 1.0,
+"texture": ExtResource("idle_5")
+}, {
+"duration": 1.0,
+"texture": ExtResource("idle_6")
+}],
+"loop": true,
+"name": &"idle",
+"speed": 8.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("walk_1")
+}, {
+"duration": 1.0,
+"texture": ExtResource("walk_2")
+}, {
+"duration": 1.0,
+"texture": ExtResource("walk_3")
+}, {
+"duration": 1.0,
+"texture": ExtResource("walk_4")
+}, {
+"duration": 1.0,
+"texture": ExtResource("walk_5")
+}, {
+"duration": 1.0,
+"texture": ExtResource("walk_6")
+}, {
+"duration": 1.0,
+"texture": ExtResource("walk_7")
+}, {
+"duration": 1.0,
+"texture": ExtResource("walk_8")
+}],
+"loop": true,
+"name": &"walk",
+"speed": 12.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("attack01_1")
+}, {
+"duration": 1.0,
+"texture": ExtResource("attack01_2")
+}, {
+"duration": 1.0,
+"texture": ExtResource("attack01_3")
+}, {
+"duration": 1.0,
+"texture": ExtResource("attack01_4")
+}, {
+"duration": 1.0,
+"texture": ExtResource("attack01_5")
+}, {
+"duration": 1.0,
+"texture": ExtResource("attack01_6")
+}, {
+"duration": 1.0,
+"texture": ExtResource("attack01_7")
+}, {
+"duration": 1.0,
+"texture": ExtResource("attack01_8")
+}, {
+"duration": 1.0,
+"texture": ExtResource("attack01_9")
+}, {
+"duration": 1.0,
+"texture": ExtResource("attack01_10")
+}, {
+"duration": 1.0,
+"texture": ExtResource("attack01_11")
+}, {
+"duration": 1.0,
+"texture": ExtResource("attack01_12")
+}, {
+"duration": 1.0,
+"texture": ExtResource("attack01_13")
+}],
+"loop": false,
+"name": &"attack01",
+"speed": 14.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("hurt_1")
+}, {
+"duration": 1.0,
+"texture": ExtResource("hurt_2")
+}, {
+"duration": 1.0,
+"texture": ExtResource("hurt_3")
+}],
+"loop": false,
+"name": &"hurt",
+"speed": 12.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("death_1")
+}, {
+"duration": 1.0,
+"texture": ExtResource("death_2")
+}, {
+"duration": 1.0,
+"texture": ExtResource("death_3")
+}, {
+"duration": 1.0,
+"texture": ExtResource("death_4")
+}, {
+"duration": 1.0,
+"texture": ExtResource("death_5")
+}, {
+"duration": 1.0,
+"texture": ExtResource("death_6")
+}, {
+"duration": 1.0,
+"texture": ExtResource("death_7")
+}, {
+"duration": 1.0,
+"texture": ExtResource("death_8")
+}, {
+"duration": 1.0,
+"texture": ExtResource("death_9")
+}, {
+"duration": 1.0,
+"texture": ExtResource("death_10")
+}, {
+"duration": 1.0,
+"texture": ExtResource("death_11")
+}, {
+"duration": 1.0,
+"texture": ExtResource("death_12")
+}],
+"loop": false,
+"name": &"death",
+"speed": 10.0
+}]

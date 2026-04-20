@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://dcebpeljik31r"]
 
-[ext_resource type="Texture2D" uid="uid://1jv4cvfb4ijy" path="res://sample images/Viking-Creature-Card-Example.png" id="1_tex"]
+[ext_resource type="Texture2D" uid="uid://1jv4cvfb4ijy" path="res://assets/cards/creatures/creature_template.png" id="1_tex"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_name"]
 font_size = 100

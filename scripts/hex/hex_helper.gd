@@ -72,6 +72,70 @@ static func hex_neighbors(coord: Vector2i) -> Array[Vector2i]:
 	return neighbors
 
 
+## Step one hex in a cardinal direction (0-5). Direction indexes match the
+## order in EVEN_COL_DIRECTIONS / ODD_COL_DIRECTIONS. For offset-coord
+## "odd-q" layout, even and odd columns use different offset vectors, so we
+## dispatch based on the origin's parity.
+static func neighbor_in_direction(origin: Vector2i, direction_index: int) -> Vector2i:
+	var dirs: Array[Vector2i] = EVEN_COL_DIRECTIONS if (origin.x & 1) == 0 else ODD_COL_DIRECTIONS
+	return origin + dirs[direction_index]
+
+
+## Walk up to `max_steps` hexes from `origin` in a given cardinal direction,
+## stopping early if a hex fails the optional `blocker_check` callable.
+##
+## blocker_check receives each proposed hex (the NEXT step) and returns true
+## if the line should stop BEFORE including that hex — use this to enforce
+## impassable terrain ("tile is a wall") or out-of-bounds checks. Pass an
+## empty Callable to walk unconditionally.
+##
+## Returns the list of hexes walked in order (does NOT include origin).
+static func hexes_in_direction(
+	origin: Vector2i,
+	direction_index: int,
+	max_steps: int,
+	blocker_check: Callable = Callable(),
+) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	var current: Vector2i = origin
+	for _i: int in range(max_steps):
+		current = neighbor_in_direction(current, direction_index)
+		if blocker_check.is_valid() and blocker_check.call(current):
+			break
+		result.append(current)
+	return result
+
+
+## Return all valid line-target hexes from `origin`, covering all 6 cardinal
+## directions out to `max_steps`. Each direction terminates on the first
+## blocker_check hit. Convenient one-call helper for LINE_HEX targeting.
+static func cardinal_line_targets(
+	origin: Vector2i,
+	max_steps: int,
+	blocker_check: Callable = Callable(),
+) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	for direction_index: int in range(6):
+		result.append_array(hexes_in_direction(origin, direction_index, max_steps, blocker_check))
+	return result
+
+
+## Given a target hex that's in a cardinal line from origin, return the step
+## count and direction index so callers can reconstruct the exact path. Returns
+## {distance: int, direction: int} if in line, or {} if target is not on any
+## cardinal line within `max_steps` of origin.
+static func find_cardinal_line_path(origin: Vector2i, target: Vector2i, max_steps: int) -> Dictionary:
+	if origin == target:
+		return {"distance": 0, "direction": -1}
+	for direction_index: int in range(6):
+		var current: Vector2i = origin
+		for step: int in range(1, max_steps + 1):
+			current = neighbor_in_direction(current, direction_index)
+			if current == target:
+				return {"distance": step, "direction": direction_index}
+	return {}
+
+
 ## Return all hexes at exactly `radius` distance from center (a ring).
 static func hex_ring(center: Vector2i, radius: int) -> Array[Vector2i]:
 	if radius == 0:

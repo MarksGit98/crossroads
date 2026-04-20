@@ -31,6 +31,7 @@ const EXAMPLE_DECK: Array[String] = [
 	# Creatures
 	"viking_archer",
 	"viking_armored_axeman",
+	"viking_axed_marauder",
 	"viking_knight",
 	"viking_knight_templar",
 	"viking_lancer",
@@ -188,7 +189,12 @@ func _build_viewer() -> Control:
 	return backdrop
 
 
-## Build one row for the card list: "Name — Type (Cost)"
+## Build one row for the card list: "Name — Type (Cost) [+ Hand?]"
+##
+## When DevMode is active, each row gains a "+ Hand" button on the right
+## that spawns a copy of that card directly into the player's hand —
+## a testing affordance so you don't have to repeatedly shuffle and draw
+## to try out a specific card.
 func _build_card_row(data: CardData) -> HBoxContainer:
 	var row := HBoxContainer.new()
 
@@ -216,7 +222,61 @@ func _build_card_row(data: CardData) -> HBoxContainer:
 	cost_label.custom_minimum_size.x = 30.0
 	row.add_child(cost_label)
 
+	# Dev-mode: "+ Hand" button materializes this card directly into the
+	# player's hand (bypasses the normal draw flow). Only visible when
+	# DevMode.enabled; keeps in sync via the changed signal.
+	var add_btn := Button.new()
+	add_btn.text = "+ Hand"
+	add_btn.add_theme_font_size_override("font_size", 12)
+	add_btn.custom_minimum_size = Vector2(70, 22)
+	add_btn.visible = DevMode.enabled
+	add_btn.pressed.connect(_on_dev_add_card_pressed.bind(data))
+	# Hide/show as DevMode flips — use the button itself to lifetime-own
+	# the connection so it disconnects automatically on queue_free().
+	DevMode.changed.connect(func(enabled: bool) -> void:
+		if is_instance_valid(add_btn):
+			add_btn.visible = enabled
+	)
+	row.add_child(add_btn)
+
 	return row
+
+
+## Dev-tool handler for the "+ Hand" button. Looks up the Hand node and
+## spawns the chosen card via its dev helper, then closes the viewer so
+## the tester can immediately use the new card.
+func _on_dev_add_card_pressed(data: CardData) -> void:
+	var hand: Node2D = _find_hand_node()
+	if hand == null:
+		push_warning("Deck dev-add: could not locate Hand node in scene tree")
+		return
+	if hand.has_method("add_card_to_hand_from_dev"):
+		hand.add_card_to_hand_from_dev(data)
+	_close_viewer()
+
+
+## Walk up the scene tree looking for a Hand node. Not ideal (breaks if
+## the hand moves) but good enough for a dev-only feature. Once we have a
+## DuelContext reference here we can replace this with ctx.hand directly.
+func _find_hand_node() -> Node2D:
+	var n: Node = get_tree().get_first_node_in_group("hand")
+	if n is Node2D:
+		return n
+	# Fallback: scan by class name.
+	var root: Node = get_tree().current_scene
+	if root:
+		return _find_hand_recursive(root)
+	return null
+
+
+func _find_hand_recursive(node: Node) -> Node2D:
+	if node.get_script() and node.get_script().resource_path.ends_with("/hand.gd"):
+		return node as Node2D
+	for child: Node in node.get_children():
+		var found: Node2D = _find_hand_recursive(child)
+		if found:
+			return found
+	return null
 
 
 func _on_backdrop_input(event: InputEvent) -> void:

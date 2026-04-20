@@ -190,6 +190,73 @@ func get_valid_moves_for(creature: Creature) -> Array[Vector2i]:
 	return reachable
 
 
+## Find a shortest-path route from `start` toward `goal`, routing around
+## impassable terrain and other creatures. Used by enemy AI to plan
+## multi-turn approaches when the direct line is blocked.
+##
+## The returned array EXCLUDES the start hex and INCLUDES every step up to
+## and including the last walkable hex before `goal` (so "walk onto the
+## target's hex" is not suggested, but "walk adjacent and be in attack
+## range" is). Empty array if no route exists within `max_search` expansions.
+##
+## Callers typically only consume the first few entries (up to the unit's
+## move_range); the rest describes the broader plan for debugging / future
+## multi-turn caching.
+func find_path_toward(start: Vector2i, goal: Vector2i, max_search: int = 200) -> Array[Vector2i]:
+	if start == goal:
+		return []
+
+	# BFS. Track came_from[] so we can reconstruct the path at the end.
+	var came_from: Dictionary = {}  # coord -> coord that led here
+	came_from[start] = start
+
+	var frontier: Array[Vector2i] = [start]
+	var found: bool = false
+	var expansions: int = 0
+
+	while not frontier.is_empty() and expansions < max_search:
+		var current: Vector2i = frontier.pop_front()
+		if current == goal:
+			found = true
+			break
+		expansions += 1
+		for neighbor: Vector2i in HexHelper.hex_neighbors(current):
+			if came_from.has(neighbor):
+				continue
+			if not is_in_bounds(neighbor):
+				continue
+			var tile: HexTileData = get_tile(neighbor)
+			if tile == null:
+				continue
+			# Allow the goal hex even if occupied (that's the target we're
+			# approaching). For all other hexes, respect passability and
+			# don't path through occupied squares.
+			if neighbor != goal:
+				if not tile.is_passable():
+					continue
+				if tile.is_occupied():
+					continue
+			came_from[neighbor] = current
+			frontier.append(neighbor)
+
+	# Reconstruct path by walking came_from backward from goal (or the
+	# closest approach if we didn't reach the goal but still expanded).
+	if not found:
+		return []
+	var path: Array[Vector2i] = []
+	var node: Vector2i = goal
+	while node != start:
+		path.push_front(node)
+		node = came_from[node]
+	# Drop the final hex if it's the goal's own occupied tile — the enemy
+	# should stop adjacent, not walk onto the target.
+	if not path.is_empty() and path[-1] == goal:
+		var goal_tile: HexTileData = get_tile(goal)
+		if goal_tile and goal_tile.is_occupied():
+			path.pop_back()
+	return path
+
+
 ## Compute all valid attack target hexes for a creature.
 ## Returns hexes within attack_range that contain a hostile creature.
 func get_valid_attack_targets_for(creature: Creature) -> Array[Vector2i]:

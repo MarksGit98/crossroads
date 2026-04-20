@@ -3,7 +3,7 @@ class_name SpellCard
 extends Card
 
 ## Spell card template texture — swapped into the layout's CardBackground during bake.
-var _spell_template: Texture2D = preload("res://sample images/Viking-Spell-Card-Example.png")
+var _spell_template: Texture2D = preload("res://assets/cards/spells/spell_template.png")
 
 
 # =============================================================================

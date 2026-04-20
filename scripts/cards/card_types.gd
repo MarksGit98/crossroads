@@ -80,6 +80,10 @@ enum TargetRule {
 	ALL_UNITS,       ## All units on the board.
 	HERO,            ## The player's hero unit only.
 	NON_HERO,        ## Any unit that is not a hero.
+	LINE_HEX,        ## Any hex along one of the 6 cardinal directions from
+					 ## the caster, within `range` steps. Stops at impassable
+					 ## terrain along each direction. Used for straight-line
+					 ## projectile abilities like Axed Marauder's axe throw.
 }
 
 enum EffectTarget {
@@ -218,6 +222,10 @@ enum EffectType {
 	SHIELD,          ## Apply shielded with N absorption.
 	EXECUTE,         ## Destroy target if its HP is below N% of max_hp.
 	MARK_SPAWN,      ## Mark the target hex as a valid spawn location.
+	THROW_AXE,       ## Throw an axe in a straight line: pierces all enemies
+					 ## in path, stops at impassable terrain, lands as a
+					 ## ThrownAxe deployable at the final reachable hex.
+					 ## Consumes one charge of deployable_charges[<axe_id>].
 }
 
 

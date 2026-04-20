@@ -25,6 +25,7 @@ UnitDatabase="*res://autoloads/unit_database.gd"
 TerrainDatabase="*res://autoloads/terrain_database.gd"
 AudioManager="*res://autoloads/audio_manager.gd"
 SaveSystem="*res://autoloads/save_system.gd"
+DevMode="*res://autoloads/dev_mode.gd"
 
 [display]
 

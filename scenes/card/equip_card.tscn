@@ -1,7 +1,14 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://bpgg8i3opiskw"]
 
 [ext_resource type="PackedScene" uid="uid://c2d0o3140vgad" path="res://scenes/card/card.tscn" id="1_base"]
-[ext_resource type="Script" path="res://scripts/cards/equip_card.gd" id="2_script"]
+[ext_resource type="Script" uid="uid://b602uof8msmo" path="res://scripts/cards/equip_card.gd" id="2_script"]
+[ext_resource type="Texture2D" uid="uid://d0rp7ie7vtujg" path="res://assets/cards/equips/equip_template.png" id="3_equip_tex"]
 
-[node name="Card" instance=ExtResource("1_base")]
+[node name="Card" unique_id=537314844 instance=ExtResource("1_base")]
 script = ExtResource("2_script")
+
+[node name="CardImage" parent="." index="0" unique_id=302204913]
+texture = ExtResource("3_equip_tex")
+
+[node name="CollisionShape2D" parent="Area2D" parent_id_path=PackedInt32Array(944268704) index="0" unique_id=1942485522]
+position = Vector2(6, -10)

@@ -153,17 +153,29 @@ func _bake_card_texture(data: CardData) -> void:
 	if template_tex == null:
 		push_warning("Card '%s': no template texture for bake" % data.card_name)
 		return
-	var tex_size: Vector2i = template_tex.get_size()
+
+	# -- Instance the face layout scene --
+	var layout: Control = _get_face_layout().instantiate()
+
+	# Size the SubViewport to the layout's authoring size (1342x1846 per
+	# card_face_layout.tscn), not the template texture's native size. Some
+	# templates are smaller than the layout (equip is 880x1197) — the
+	# CardBackground TextureRect anchors full-rect so it stretches any
+	# template up to the layout's bounds, and labels always stay inside
+	# the viewport instead of getting clipped on smaller-template cards.
+	var layout_size: Vector2i = Vector2i(layout.custom_minimum_size)
+	if layout_size.x <= 0 or layout_size.y <= 0:
+		# Fallback if the layout doesn't declare a minimum size — use the
+		# template's native size (legacy behavior).
+		layout_size = template_tex.get_size()
 
 	# -- Create the offscreen viewport --
 	var viewport := SubViewport.new()
-	viewport.size = tex_size
+	viewport.size = layout_size
 	viewport.transparent_bg = true
 	viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
 	viewport.gui_disable_input = true
 
-	# -- Instance the face layout scene --
-	var layout: Control = _get_face_layout().instantiate()
 	viewport.add_child(layout)
 
 	# -- Populate labels from card data --

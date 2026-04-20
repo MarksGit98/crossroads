@@ -747,6 +747,19 @@ func draw_cards(count: int) -> void:
 	arrange_hand()
 
 
+## Dev-tool: materialize a card in the player's hand from a specific
+## CardData, bypassing the deck-draw flow. Used by the Deck viewer's
+## "+ Hand" buttons while DevMode is enabled. Intentionally does NOT
+## remove the card from the deck — the tester is spawning an extra copy
+## for testing, not drawing the real copy.
+func add_card_to_hand_from_dev(data: CardData) -> void:
+	if data == null:
+		return
+	var card: Card = _instance_card(data)
+	add_child(card)
+	arrange_hand()
+
+
 ## Instantiate the correct card scene for this card type and populate it.
 func _instance_card(data: CardData) -> Card:
 	var scene: PackedScene = _card_scenes.get(data.card_type, _card_scenes[CardTypes.CardType.CREATURE])

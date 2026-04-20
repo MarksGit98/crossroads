@@ -1,7 +1,10 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://d0ookwxxfniqe"]
 
 [ext_resource type="PackedScene" uid="uid://c2d0o3140vgad" path="res://scenes/card/card.tscn" id="1_base"]
-[ext_resource type="Script" path="res://scripts/cards/trap_card.gd" id="2_script"]
+[ext_resource type="Script" uid="uid://cref0flq27wbt" path="res://scripts/cards/trap_card.gd" id="2_script"]
 
-[node name="Card" instance=ExtResource("1_base")]
+[node name="Card" unique_id=876910359 instance=ExtResource("1_base")]
 script = ExtResource("2_script")
+
+[node name="CollisionShape2D" parent="Area2D" parent_id_path=PackedInt32Array(944268704) index="0" unique_id=1942485522]
+position = Vector2(8, -8)

@@ -385,34 +385,64 @@ func _find_nearest_player_creature(enemy: EnemyCreature, targets: Array[Creature
 	return best
 
 
-## Move an enemy one step toward a target creature using BFS valid moves.
+## Move an enemy toward a target creature, routing around impassable terrain
+## and other units. Uses BFS pathfinding so walls, rivers, and blocked tiles
+## no longer trap the AI in a local minimum (previously enemies stood still
+## when the straight line to the target was blocked).
+##
+## The enemy walks up to `current_move_range` hexes along the planned path,
+## stopping at whichever hex along the route is:
+##   (a) actually reachable this turn (not beyond move_range), AND
+##   (b) within the set of hexes the creature could legally move to per
+##       its move_pattern / passability rules.
+##
+## If no path exists at all (entirely walled off from the target), the
+## enemy does nothing and the turn advances cleanly instead of hanging.
 func _move_enemy_toward(enemy: EnemyCreature, target: Creature) -> void:
-	var valid_moves: Array[Vector2i] = hex_grid.get_valid_moves_for(enemy)
-	if valid_moves.is_empty():
+	var move_range: int = enemy.current_move_range
+	if move_range <= 0:
 		return
 
-	# Pick the valid move hex closest to the target.
-	var best_hex: Vector2i = valid_moves[0]
-	var best_dist: int = HexHelper.hex_distance(best_hex, target.hex_position)
-	for coord: Vector2i in valid_moves:
-		var dist: int = HexHelper.hex_distance(coord, target.hex_position)
-		if dist < best_dist:
-			best_dist = dist
-			best_hex = coord
+	# Plan a full route from enemy to a hex adjacent to target.
+	var path: Array[Vector2i] = hex_grid.find_path_toward(
+		enemy.hex_position, target.hex_position
+	)
+	if path.is_empty():
+		# No path — enemy is completely walled off. Stay put and let the
+		# turn advance so we don't hang waiting on a move that can't happen.
+		return
 
-	# Only move if it actually gets closer.
-	var current_dist: int = HexHelper.hex_distance(enemy.hex_position, target.hex_position)
-	if best_dist >= current_dist:
+	# Pick the furthest hex along the path that this enemy can legally move
+	# to THIS turn. Cap at move_range and validate against the creature's
+	# own move filter so e.g. a SWIM-only unit can't land on non-water path
+	# hexes the BFS might suggest.
+	var valid_moves_set: Dictionary = {}
+	for coord: Vector2i in hex_grid.get_valid_moves_for(enemy):
+		valid_moves_set[coord] = true
+
+	var step_target: Vector2i = enemy.hex_position
+	var reach: int = mini(move_range, path.size())
+	for i: int in range(reach):
+		var candidate: Vector2i = path[i]
+		if valid_moves_set.has(candidate):
+			step_target = candidate
+		# If the path calls for a hex outside our legal moves (e.g. move
+		# pattern restriction), stop advancing — don't skip that hex.
+		else:
+			break
+
+	if step_target == enemy.hex_position:
 		return
 
 	# Update tile occupancy.
 	hex_grid.remove_creature(enemy.hex_position)
-	var new_tile: HexTileData = hex_grid.get_tile(best_hex)
+	var new_tile: HexTileData = hex_grid.get_tile(step_target)
 	if new_tile:
 		new_tile.occupant = enemy
 
-	# Animate the move.
-	await enemy.move_to(best_hex, hex_grid.hex_size, ctx)
+	# Animate the move. ctx is passed so deployable enter/exit hooks fire
+	# if the enemy steps onto or off of a deployable-hosting hex.
+	await enemy.move_to(step_target, hex_grid.hex_size, ctx)
 
 
 # =============================================================================

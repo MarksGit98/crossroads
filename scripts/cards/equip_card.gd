@@ -2,15 +2,26 @@
 class_name EquipCard
 extends Card
 
+## Equip card template texture — swapped into the layout's CardBackground
+## during bake so equipment cards have their own visual frame, not the
+## creature template. Swap this constant for per-card art later.
+var _equip_template: Texture2D = preload("res://assets/cards/equips/equip_template.png")
+
 ## The creature this equipment is currently attached to, or null.
 var attached_to: Creature = null
 
 
 # =============================================================================
-# Bake — populate description with full passive text + granted keywords + flavor
+# Bake — equip template background + passive description text
 # =============================================================================
 
+## Override: swap the CardBackground texture to the equip template and
+## populate the description with full passive text + granted keywords +
+## flavor (same approach SpellCard uses for its own template).
 func _populate_layout(layout: Control, data: CardData) -> void:
+	var bg: TextureRect = layout.get_node_or_null("CardBackground")
+	if bg:
+		bg.texture = _equip_template
 	super._populate_layout(layout, data)
 	var desc_label: Label = layout.get_node_or_null("DescriptionLabel")
 	if desc_label:

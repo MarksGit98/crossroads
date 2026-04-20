@@ -31,6 +31,18 @@ var _combat_count: int = 0
 ## creatures receive it per-action via setup / use_active / can_play calls.
 var duel_ctx: DuelContext = DuelContext.new()
 
+## Background music track that starts playing when the duel begins. Swap
+## this path to change the track for this specific scene without touching
+## AudioManager. Later we'll drive this from gamemode / boss state.
+const BG_MUSIC_PATH: String = "res://assets/sounds/bg_music/The Sky of our Ancestors.mp3"
+
+## Audio mute toggle HUD, spawned at _ready and anchored to the top-right.
+const AUDIO_CONTROLS_HUD_SCENE: PackedScene = preload("res://scenes/ui/audio_controls_hud.tscn")
+
+## Developer-mode banner, shown while DevMode is toggled on (F9). Lives in
+## its own CanvasLayer; hidden by default.
+const DEV_MODE_HUD_SCENE: PackedScene = preload("res://scenes/ui/dev_mode_hud.tscn")
+
 ## Margins for anchoring the end-turn UI to the bottom-right corner.
 const END_TURN_MARGIN_RIGHT: float = 20.0
 const END_TURN_MARGIN_BOTTOM: float = 100.0
@@ -41,6 +53,9 @@ const TURN_LABEL_GAP: float = 5.0
 
 
 func _ready() -> void:
+	_spawn_audio_controls_hud()
+	_spawn_dev_mode_hud()
+	_start_duel_music()
 	print("Duel starting — Mode: %s (%s)" % [
 		GamemodeTypes.mode_name(current_gamemode),
 		GamemodeTypes.mode_description(current_gamemode),
@@ -247,3 +262,35 @@ func _on_border_toggle_pressed() -> void:
 	var new_state: bool = not hex_grid.are_borders_visible()
 	hex_grid.set_borders_visible(new_state)
 	border_toggle.text = "Hide Hex Borders" if new_state else "Show Hex Borders"
+
+
+# =============================================================================
+# Audio
+# =============================================================================
+
+## Instantiate the music / SFX toggle HUD and park it in a dedicated
+## CanvasLayer so it renders on top of everything and isn't affected by
+## the camera transform.
+func _spawn_audio_controls_hud() -> void:
+	var layer: CanvasLayer = CanvasLayer.new()
+	layer.layer = 110  # above gameplay UI layers but below full-screen modals
+	add_child(layer)
+	var hud: AudioControlsHUD = AUDIO_CONTROLS_HUD_SCENE.instantiate()
+	layer.add_child(hud)
+
+
+## Instantiate the dev-mode banner. Stays hidden unless DevMode.enabled
+## is true; DevMode is toggled with F9 anywhere in the game.
+func _spawn_dev_mode_hud() -> void:
+	var layer: CanvasLayer = CanvasLayer.new()
+	layer.layer = 111  # one notch above audio HUD so it can't be covered
+	add_child(layer)
+	var hud: DevModeHUD = DEV_MODE_HUD_SCENE.instantiate()
+	layer.add_child(hud)
+
+
+## Kick off the duel background track. AudioManager crossfades automatically
+## and skips the call if the same track is already playing (so resuming from
+## a paused duel doesn't restart from frame 0).
+func _start_duel_music() -> void:
+	AudioManager.play_music(BG_MUSIC_PATH)

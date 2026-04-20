@@ -122,6 +122,15 @@ var heavy_attack_cd_remaining: int = 0
 ## overrides can be added later by reading from CardData / EnemyData.
 const HEAVY_ATTACK_COOLDOWN: int = 3
 
+## Safety timeouts (seconds) for animation awaits. If a signal doesn't fire
+## in this window — e.g. an attack animation has fewer frames than
+## CreatureStateMachine.attack_hit_frame, or a SpriteFrames resource is
+## mis-authored — the await bails out so the enemy turn can't hang on a
+## single misbehaving animation. Values tuned higher than normal animation
+## duration so timeout only triggers on real failures, not normal timing.
+const ATTACK_HIT_TIMEOUT: float = 2.0
+const ANIMATION_FINISHED_TIMEOUT: float = 3.0
+
 # =============================================================================
 # Node References
 # =============================================================================
@@ -192,6 +201,17 @@ func initialize(data: CardData, hex: Vector2i, hex_size: float) -> void:
 	# regardless of whether it's variant-grouped or flat.
 	for i: int in range(data.actives.size()):
 		_active_cooldowns[i] = 0
+
+	# Seed deployable_charges from any active ability that declares starting
+	# ammo. Example: Axed Marauder's axe throw has required_charge_id =
+	# "axed_marauder_axe" + starting_charges = 2 (or 3 when upgraded), so the
+	# creature spawns holding that many axes. This scans the variant-resolved
+	# actives so upgraded creatures pick up upgraded starting counts.
+	for ability: Dictionary in get_actives():
+		var charge_id: String = ability.get("required_charge_id", "")
+		var starting: int = ability.get("starting_charges", 0)
+		if charge_id != "" and starting > 0:
+			deployable_charges[charge_id] = starting
 
 	# Position on the grid. Add DEPTH_OFFSET to match 2.5D tile positioning.
 	hex_position = hex
@@ -413,6 +433,15 @@ func can_use_active(ability_index: int, ctx: DuelContext) -> bool:
 		if player == null or not player.can_afford(cost, cost_type):
 			return false
 
+	# Deployable-charge gate: abilities that consume charges (e.g. axe throw)
+	# declare which charge type they require. If the creature has none of
+	# that type in hand, the ability is unavailable.
+	var required_charge_id: String = ability.get("required_charge_id", "")
+	if required_charge_id != "":
+		var held: int = deployable_charges.get(required_charge_id, 0)
+		if held <= 0:
+			return false
+
 	# Effect-specific checks.
 	var effects: Array = ability.get("effects", [])
 	for effect: Dictionary in effects:
@@ -478,7 +507,21 @@ func get_active_targets(ability_index: int, board: HexGrid) -> Array[Vector2i]:
 	var ability_range: int = ability.get("range", 1)
 	var target_rule: int = ability.get("target_rule", CardTypes.TargetRule.ANY_ENEMY)
 
-	# Get all hexes within range of this creature.
+	# LINE_HEX has its own targeting path: walk outward from the caster in
+	# each of the 6 cardinal directions, stopping at impassable terrain.
+	# Every hex along the way is a valid target. Used for projectile-style
+	# actives like Axed Marauder's axe throw.
+	if target_rule == CardTypes.TargetRule.LINE_HEX:
+		return HexHelper.cardinal_line_targets(
+			hex_position,
+			ability_range,
+			func(coord: Vector2i) -> bool:
+				var tile: HexTileData = board.get_tile(coord)
+				# Stop the line if we walk off the board or into impassable terrain.
+				return tile == null or not tile.is_passable(),
+		)
+
+	# Default: every hex within range, filtered by target_rule.
 	var hexes_in_range: Array[Vector2i] = HexHelper.hex_range(hex_position, ability_range)
 
 	var valid: Array[Vector2i] = []
@@ -595,9 +638,46 @@ func upgrade() -> void:
 	is_upgraded = true
 	if card_data:
 		card_data.is_upgraded = true
-	# Refresh the overhead stats bar so any upgrade-dependent display updates.
+	refresh_stats_bar()
+
+
+## Public shortcut for external systems (deployables picking up / using
+## charges, effects that modify armor, etc.) to tell this creature its
+## stats bar needs a redraw. No-op if the bar hasn't been built yet.
+func refresh_stats_bar() -> void:
 	if _stats_bar:
 		_stats_bar.refresh()
+
+
+## Wait for a signal to fire, but bail out after `timeout_sec` to prevent
+## animation callbacks from hanging the turn indefinitely.
+##
+## Races the signal against a SceneTreeTimer by polling each frame. Returns
+## true if the signal fired, false if we timed out. When it times out, the
+## temporary callback is disconnected so we don't accumulate stale hooks.
+##
+## Why: some SpriteFrames configurations (too few frames, looping flag set
+## incorrectly, mis-tuned attack_hit_frame) can cause signals like
+## `state_machine.attack_hit` or `animated_sprite.animation_finished` to
+## never fire for that one animation. Previously the enemy turn hung on
+## that await — now the creature gives up and the turn advances.
+func _await_signal_or_timeout(sig: Signal, timeout_sec: float) -> bool:
+	var fired: Array[bool] = [false]
+	var cb: Callable = func() -> void:
+		fired[0] = true
+	sig.connect(cb, CONNECT_ONE_SHOT)
+
+	var timer: SceneTreeTimer = get_tree().create_timer(timeout_sec)
+	while not fired[0] and timer.time_left > 0.0:
+		await get_tree().process_frame
+
+	if not fired[0]:
+		if sig.is_connected(cb):
+			sig.disconnect(cb)
+		push_warning("Creature(%s): animation signal timed out after %.1fs" % [
+			creature_name, timeout_sec,
+		])
+	return fired[0]
 
 
 # -- Internal: source arrays --
@@ -808,7 +888,7 @@ func perform_attack(target: Creature, hex_grid: HexGrid) -> int:
 	# Applies to both melee and ranged — ranged units fire from home_pos.
 	if state_machine:
 		state_machine.play_attack(_pick_basic_attack_anim())
-		await state_machine.attack_hit
+		await _await_signal_or_timeout(state_machine.attack_hit, ATTACK_HIT_TIMEOUT)
 
 	# Guard: target may have died from another source between anim start and hit.
 	var actual_damage: int = 0
@@ -821,7 +901,7 @@ func perform_attack(target: Creature, hex_grid: HexGrid) -> int:
 
 	# Wait for attack animation to finish.
 	if state_machine and state_machine.current_state == CreatureStateMachine.State.ATTACKING:
-		await state_machine.animation_finished
+		await _await_signal_or_timeout(state_machine.animation_finished, ANIMATION_FINISHED_TIMEOUT)
 
 	# -- Melee-only: walk back to home position after the swing --
 	if not is_ranged:
@@ -1011,8 +1091,99 @@ static func apply_effect(effect: Dictionary, ctx: DuelContext) -> void:
 					if pct <= threshold_pct:
 						creature.take_damage(creature.current_hp)
 
+		CardTypes.EffectType.THROW_AXE:
+			_dispatch_axe_throw(effect, ctx)
+
 		_:
 			push_warning("Creature.apply_effect: unhandled effect type %d" % effect_type)
+
+
+## Handle the THROW_AXE effect:
+##   1. Resolve the caster and the chosen target hex (from ctx.target_hexes[0]).
+##   2. Walk the cardinal line from caster to target; stop early at impassable
+##      terrain so the axe doesn't embed in walls.
+##   3. Deal damage to every enemy passed through (pierce).
+##   4. Spawn a ThrownAxe deployable at the landing hex and start its throw
+##      animation (spinning + flying visually). Non-awaited so the dispatcher
+##      stays synchronous; the axe registers after landing.
+##   5. Decrement the caster's deployable_charges for the axe type.
+##
+## Effect dict keys:
+##   "range":         int — max hexes the axe can travel (2 base, 3 upgraded)
+##   "damage_type":   CardTypes.DamageType (defaults to PHYSICAL)
+##   "damage_source": optional String — "half_atk_ceil" (default) or "flat"
+##   "damage":        int — only used when damage_source=="flat" (default 0)
+static func _dispatch_axe_throw(effect: Dictionary, ctx: DuelContext) -> void:
+	if ctx == null or ctx.board == null or ctx.caster == null:
+		push_warning("THROW_AXE: missing context/board/caster")
+		return
+	var caster: Creature = ctx.caster
+	var board: HexGrid = ctx.board
+	if ctx.target_hexes.is_empty():
+		return
+
+	var target_hex: Vector2i = ctx.target_hexes[0]
+	var max_steps: int = effect.get("range", 2)
+
+	# Validate the target is on a cardinal line from caster within range.
+	var path_info: Dictionary = HexHelper.find_cardinal_line_path(
+		caster.hex_position, target_hex, max_steps
+	)
+	if path_info.is_empty():
+		push_warning("THROW_AXE: target %s is not on a cardinal line from caster" % target_hex)
+		return
+	var direction: int = path_info.get("direction", -1)
+	var distance: int = path_info.get("distance", 0)
+	if direction < 0 or distance <= 0:
+		return
+
+	# Walk the line, collecting the sequence of hexes the axe passes through.
+	# Stop at the first impassable tile so the axe doesn't stick into walls.
+	var path: Array[Vector2i] = []
+	var current: Vector2i = caster.hex_position
+	for step: int in range(distance):
+		current = HexHelper.neighbor_in_direction(current, direction)
+		var tile: HexTileData = board.get_tile(current)
+		if tile == null or not tile.is_passable():
+			break
+		path.append(current)
+	if path.is_empty():
+		return
+
+	# Compute damage: ceil(caster.current_atk / 2) is the default; "flat"
+	# sources use the effect's raw "damage" value (for unit tests / neutral
+	# projectiles that don't scale).
+	var damage_source: String = effect.get("damage_source", "half_atk_ceil")
+	var dmg_amount: int
+	if damage_source == "flat":
+		dmg_amount = effect.get("damage", 0)
+	else:
+		dmg_amount = int(ceil(float(caster.current_atk) / 2.0))
+	var dmg_type: int = effect.get("damage_type", CardTypes.DamageType.PHYSICAL)
+
+	# Damage each enemy the axe passes through. The caster themselves is
+	# skipped (they can't hit their own starting hex anyway, but be explicit).
+	for hex: Vector2i in path:
+		var tile: HexTileData = board.get_tile(hex)
+		if tile and tile.is_occupied() and tile.occupant is Creature:
+			var victim: Creature = tile.occupant as Creature
+			if victim != caster and victim.is_alive() and victim.is_enemy() != caster.is_enemy():
+				victim.take_damage(dmg_amount, dmg_type as CardTypes.DamageType)
+
+	# Spawn the axe at the landing hex (the last hex in the path) and start
+	# the throw animation. Fire-and-forget: the dispatcher stays synchronous
+	# while the axe visually flies in the background and self-registers on
+	# landing. Owner creature + side carry through for the pickup flow.
+	var landing_hex: Vector2i = path[path.size() - 1]
+	var axe: ThrownAxe = ThrownAxe.new()
+	axe.owner_creature = caster
+	axe.owner_side = &"enemy" if caster.is_enemy() else &"player"
+	axe.throw_to(ctx, caster.hex_position, landing_hex)
+
+	# Decrement the caster's throw charge and refresh their stats bar.
+	var charges: int = caster.deployable_charges.get(ThrownAxe.TYPE_ID, 0)
+	caster.deployable_charges[ThrownAxe.TYPE_ID] = maxi(charges - 1, 0)
+	caster.refresh_stats_bar()
 
 
 ## Resolve which creatures are targeted by a single effect.
@@ -1150,7 +1321,7 @@ func perform_heavy_attack(target_hex: Vector2i, hex_grid: HexGrid, ctx: DuelCont
 	elif state_machine:
 		var anim_name: StringName = spec.get("animation", &"heavy_attack")
 		state_machine.play_attack(anim_name)
-		await state_machine.attack_hit
+		await _await_signal_or_timeout(state_machine.attack_hit, ATTACK_HIT_TIMEOUT)
 
 	# Stamp caster + target onto the context for effect resolution.
 	if ctx:
@@ -1187,7 +1358,7 @@ func perform_heavy_attack(target_hex: Vector2i, hex_grid: HexGrid, ctx: DuelCont
 
 	# Wait for animation finish for visual completeness.
 	if state_machine and state_machine.current_state == CreatureStateMachine.State.ATTACKING:
-		await state_machine.animation_finished
+		await _await_signal_or_timeout(state_machine.animation_finished, ANIMATION_FINISHED_TIMEOUT)
 
 	# Clear transient context state we stamped.
 	if ctx:
@@ -1223,7 +1394,7 @@ func _play_heavy_attack_sequence(sequence: Array) -> void:
 	# has_used_active, click gating, etc. all see ATTACKING correctly).
 	state_machine.play_attack(sequence[0])
 	# Phase 1 is non-looping — wait for its sprite animation to finish.
-	await animated_sprite.animation_finished
+	await _await_signal_or_timeout(animated_sprite.animation_finished, ANIMATION_FINISHED_TIMEOUT)
 	# Completing phase 1 causes the state machine's _on_sprite_animation_finished
 	# to transition us back to IDLE. That's expected; subsequent phases play
 	# the sprite directly, keeping the state machine out of the way.
@@ -1366,7 +1537,9 @@ func move_to(new_hex: Vector2i, hex_size: float, ctx: DuelContext = null) -> voi
 
 	# Tween to the target position.
 	var tween: Tween = create_tween().set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_CUBIC)
-	tween.tween_property(self, "position", target_pos, 0.4)
+	# Tuned walk speed — creatures take ~1.5s to traverse a hex, which
+	# matches the pace of the walk animation and reads clearly to the player.
+	tween.tween_property(self, "position", target_pos, 1.5)
 	await tween.finished
 
 	# Stop walking, return to idle.
@@ -1529,12 +1702,12 @@ func _on_death() -> void:
 	if state_machine:
 		state_machine.play_death()
 		# Wait for the death animation to finish (state machine emits animation_finished).
-		await state_machine.animation_finished
+		await _await_signal_or_timeout(state_machine.animation_finished, ANIMATION_FINISHED_TIMEOUT)
 		# Play fade-out effect if available.
 		play_effect_anim(&"fade_out")
 		if anim_player.has_animation(&"fade_out"):
-			await anim_player.animation_finished
+			await _await_signal_or_timeout(anim_player.animation_finished, ANIMATION_FINISHED_TIMEOUT)
 	elif animated_sprite.sprite_frames and animated_sprite.sprite_frames.has_animation(&"death"):
 		animated_sprite.play(&"death")
-		await animated_sprite.animation_finished
+		await _await_signal_or_timeout(animated_sprite.animation_finished, ANIMATION_FINISHED_TIMEOUT)
 	queue_free()
