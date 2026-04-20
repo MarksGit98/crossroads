@@ -680,12 +680,42 @@ func get_active(ability_index: int) -> Dictionary:
 ## in the player's deck (and any future summons of this card type) become
 ## upgraded for the rest of the run. Matches the "per-card-type, per-run"
 ## persistence the upgrade system was designed for.
+##
+## Deployable charges are topped up by the delta between the regular and
+## upgraded `starting_charges` values. Example: Axed Marauder has 2
+## charges while regular (config), 3 while upgraded. Mid-duel upgrade
+## adds 1 to his current axe count so the stats bar reflects the bump
+## even if he's already thrown some axes.
 func upgrade() -> void:
 	if is_upgraded:
 		return
+
+	# Snapshot starting charges under the REGULAR variant before flipping,
+	# keyed by required_charge_id so we can compare against the upgraded
+	# variant's values in a moment.
+	var regular_starting: Dictionary = {}
+	for ability: Dictionary in get_actives():
+		var charge_id: String = ability.get("required_charge_id", "")
+		var starting: int = ability.get("starting_charges", 0)
+		if charge_id != "" and starting > 0:
+			regular_starting[charge_id] = starting
+
 	is_upgraded = true
 	if card_data:
 		card_data.is_upgraded = true
+
+	# Now get_actives() returns the UPGRADED variant. Top up the
+	# creature's charges by the positive delta per charge type.
+	for ability: Dictionary in get_actives():
+		var charge_id: String = ability.get("required_charge_id", "")
+		var new_starting: int = ability.get("starting_charges", 0)
+		if charge_id == "" or new_starting <= 0:
+			continue
+		var old_starting: int = regular_starting.get(charge_id, 0)
+		var delta: int = new_starting - old_starting
+		if delta > 0:
+			deployable_charges[charge_id] = deployable_charges.get(charge_id, 0) + delta
+
 	refresh_stats_bar()
 
 
@@ -1208,6 +1238,14 @@ static func apply_effect(effect: Dictionary, ctx: DuelContext) -> void:
 
 		CardTypes.EffectType.THROW_AXE:
 			_dispatch_axe_throw(effect, ctx)
+
+		CardTypes.EffectType.UPGRADE_CREATURE:
+			# Flip is_upgraded on each resolved target. Creature.upgrade()
+			# is idempotent, so stacking this effect from multiple sources
+			# is harmless — the second fire is a no-op.
+			for creature: Creature in targets:
+				if creature.is_alive():
+					creature.upgrade()
 
 		_:
 			push_warning("Creature.apply_effect: unhandled effect type %d" % effect_type)

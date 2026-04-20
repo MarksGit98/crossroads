@@ -1,6 +1,18 @@
-## Manages the draw pile and discard pile for a player's deck.
+## Manages three piles for a player's deck during a duel:
+##   draw_pile      — cards not yet drawn. Reshuffles from discard when empty.
+##   discard_pile   — cards PLAYED or manually discarded this turn/duel.
+##                    Rejoins draw_pile on reshuffle_discard().
+##   graveyard_pile — CardData of creatures that DIED on the board. Separate
+##                    from discard — a creature card goes into discard when
+##                    played, and additionally into graveyard if the creature
+##                    it spawned is killed. Graveyard is never reshuffled;
+##                    it's a persistent "corpses" list that future spells
+##                    (resurrection, soul-tap, necromancy) can target.
+##
 ## Positioned in a CanvasLayer (screen-space). Clicking the deck sprite
-## opens a viewer showing remaining cards in jumbled order.
+## opens a viewer showing remaining cards in jumbled order. Discard and
+## graveyard are displayed via separate CardPileDisplay nodes that observe
+## this Deck's piles.
 class_name Deck
 extends Node2D
 
@@ -8,9 +20,12 @@ signal card_drawn(card_data: CardData)
 signal deck_shuffled
 signal deck_empty
 signal deck_ready
+signal discard_changed                       ## fires on add_to_discard / reshuffle
+signal graveyard_changed                     ## fires on add_to_graveyard / remove
 
 var draw_pile: Array[CardData] = []
 var discard_pile: Array[CardData] = []
+var graveyard_pile: Array[CardData] = []
 
 ## Whether the deck viewer overlay is currently open.
 var _viewer_open: bool = false
@@ -35,6 +50,7 @@ const EXAMPLE_DECK: Array[String] = [
 	"viking_knight",
 	"viking_knight_templar",
 	"viking_lancer",
+	"viking_rusalka",
 	"viking_soldier",
 	"viking_swordsman",
 	"viking_wizard",
@@ -337,19 +353,54 @@ func draw_multiple(count: int) -> Array[CardData]:
 	return drawn
 
 
-## Add a card to the discard pile.
+## Add a card to the discard pile. Fires discard_changed so the pile
+## display can update its count without polling.
 func add_to_discard(data: CardData) -> void:
+	if data == null:
+		return
 	discard_pile.append(data)
 	_update_count_label()
+	discard_changed.emit()
 
 
 ## Move all cards from the discard pile into the draw pile and shuffle.
+## Fires discard_changed (now empty) and deck_shuffled.
 func reshuffle_discard() -> void:
 	if discard_pile.is_empty():
 		return
 	draw_pile.append_array(discard_pile)
 	discard_pile.clear()
 	shuffle()
+	discard_changed.emit()
+
+
+## Add a creature's CardData to the graveyard. Called by the duel scene
+## when a friendly creature dies — the CardData reference is the same
+## object that was used to spawn the creature (Creature.card_data).
+## Safe to call with null (no-op). A card can legitimately be in both
+## discard and graveyard simultaneously: discard tracks "was played",
+## graveyard tracks "creature from this card died".
+func add_to_graveyard(data: CardData) -> void:
+	if data == null:
+		return
+	graveyard_pile.append(data)
+	graveyard_changed.emit()
+
+
+## Remove a specific CardData from the graveyard (e.g. resurrection
+## effect targeting a dead creature). Returns true if found + removed.
+func remove_from_graveyard(data: CardData) -> bool:
+	var idx: int = graveyard_pile.find(data)
+	if idx < 0:
+		return false
+	graveyard_pile.remove_at(idx)
+	graveyard_changed.emit()
+	return true
+
+
+## Count of creature cards currently in the graveyard.
+func graveyard_count() -> int:
+	return graveyard_pile.size()
 
 
 # =============================================================================

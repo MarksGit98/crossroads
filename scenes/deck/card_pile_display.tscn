@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://cv8r3nqr8wt6p"]
+
+[ext_resource type="Script" path="res://scripts/cards/card_pile_display.gd" id="1_pile"]
+
+[node name="CardPileDisplay" type="Node2D"]
+script = ExtResource("1_pile")

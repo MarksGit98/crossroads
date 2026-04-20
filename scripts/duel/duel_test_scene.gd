@@ -14,6 +14,9 @@ extends Node2D
 @onready var player: Player = $Player
 @onready var hand: Node2D = $HandLayer/Hand
 @onready var action_menu: CreatureActionMenu = $MenuLayer/CreatureActionMenu
+@onready var deck_node: Deck = $DeckLayer/Deck
+@onready var discard_pile_display: CardPileDisplay = $DeckLayer/DiscardPile
+@onready var graveyard_pile_display: CardPileDisplay = $DeckLayer/GraveyardPile
 
 ## Active gamemode for this duel. Defaults to Team Deathmatch — other modes
 ## (capture-the-flag, destroy-point, escort/defend payload) will plug in later
@@ -57,6 +60,9 @@ func _ready() -> void:
 	_spawn_audio_controls_hud()
 	_spawn_dev_mode_hud()
 	_start_duel_music()
+	_wire_pile_displays()
+	_anchor_pile_displays()
+	get_viewport().size_changed.connect(_anchor_pile_displays)
 	print("Duel starting — Mode: %s (%s)" % [
 		GamemodeTypes.mode_name(current_gamemode),
 		GamemodeTypes.mode_description(current_gamemode),
@@ -126,12 +132,42 @@ func _ready() -> void:
 	_turn_manager.begin_combat()
 
 
-## Register newly spawned creatures with the interaction manager.
+## Register newly spawned creatures with the interaction manager and wire
+## up graveyard routing for friendly units.
 func _on_creature_child_added(node: Node) -> void:
 	# Wait one frame so the creature is fully initialized.
 	await get_tree().process_frame
 	if node is Creature:
-		_interaction_manager.register_creature(node as Creature)
+		var creature: Creature = node as Creature
+		_interaction_manager.register_creature(creature)
+
+		# Route friendly-creature deaths into the player's graveyard pile.
+		# Enemies aren't from the player's deck, so their deaths don't
+		# populate it — leave a hook open for future enemy-side graveyards.
+		if not creature is EnemyCreature:
+			if not creature.died.is_connected(_on_friendly_creature_died):
+				creature.died.connect(_on_friendly_creature_died)
+
+
+## When a friendly creature dies, add its source CardData to the deck's
+## graveyard pile. The card may also already be in the discard pile (it
+## was played earlier to summon the creature) — both are valid; discard
+## tracks "was played" and graveyard tracks "creature died".
+func _on_friendly_creature_died(creature: Creature) -> void:
+	if creature == null or creature.card_data == null:
+		return
+	var deck: Deck = _find_player_deck()
+	if deck:
+		deck.add_to_graveyard(creature.card_data)
+
+
+## Scene-tree lookup for the Deck node. Separate helper because the deck
+## sits in a CanvasLayer and isn't on a direct @onready path in this file.
+func _find_player_deck() -> Deck:
+	var deck_layer: Node = get_node_or_null("DeckLayer")
+	if deck_layer == null:
+		return null
+	return deck_layer.get_node_or_null("Deck") as Deck
 
 
 ## Anchor the End Turn button and turn label to the bottom-right, above the deck.
@@ -314,6 +350,43 @@ func _spawn_dev_mode_hud() -> void:
 	add_child(layer)
 	var hud: DevModeHUD = DEV_MODE_HUD_SCENE.instantiate()
 	layer.add_child(hud)
+
+
+# =============================================================================
+# Card piles — deck + discard + graveyard anchored to the bottom-right
+# =============================================================================
+
+## Each CardPileDisplay (discard, graveyard) needs:
+##   1. A deck reference so its count label observes the right pile signals.
+##   2. A texture for its icon (assigned declaratively in the tscn, but
+##      we fallback-assign here in case a scene instance forgot).
+func _wire_pile_displays() -> void:
+	if discard_pile_display:
+		if discard_pile_display.icon_texture == null:
+			discard_pile_display.icon_texture = load("res://assets/ui/piles/discard_pile.png")
+		discard_pile_display.set_deck(deck_node)
+	if graveyard_pile_display:
+		if graveyard_pile_display.icon_texture == null:
+			graveyard_pile_display.icon_texture = load("res://assets/ui/piles/graveyard.png")
+		graveyard_pile_display.set_deck(deck_node)
+
+
+## Anchor the discard + graveyard displays to the left of the deck, stacked
+## horizontally along the bottom-right. Deck anchors itself; we stack the
+## other two at ~120px intervals moving leftward.
+const PILE_SPACING: float = 120.0
+
+func _anchor_pile_displays() -> void:
+	var screen: Vector2 = get_viewport_rect().size
+	# Match Deck.MARGIN_RIGHT = 60, MARGIN_BOTTOM = 70 (those are consts
+	# inside Deck itself — we duplicate the numbers here to stack relative
+	# to the deck's position).
+	var deck_x: float = screen.x - 60.0
+	var y: float = screen.y - 70.0
+	if discard_pile_display:
+		discard_pile_display.position = Vector2(deck_x - PILE_SPACING, y)
+	if graveyard_pile_display:
+		graveyard_pile_display.position = Vector2(deck_x - 2.0 * PILE_SPACING, y)
 
 
 ## Kick off the duel background track. AudioManager crossfades automatically

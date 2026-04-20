@@ -107,6 +107,28 @@ func _on_hover_exit() -> void:
 	action_button_unhovered.emit()
 
 
+## Build the button label for an active ability. Shows the ability name
+## followed by a compact cost suffix — e.g. "Blessing  (2)" for a 2-mana
+## ability, or "Blessing  (2 HP)" for a HP-cost ability. Free abilities
+## show just the name. Players get full cost/cooldown/description in the
+## tooltip (see _populate_tooltip); this short-form keeps the essential
+## info visible even without hovering.
+func _format_active_button_label(ability: Dictionary, ability_name: String) -> String:
+	var cost: int = ability.get("cost", 0)
+	if cost <= 0:
+		return ability_name
+	var cost_type: int = ability.get("cost_type", CardTypes.CostType.MANA)
+	var cost_label: String = ""
+	match cost_type:
+		CardTypes.CostType.MANA:
+			cost_label = "%d" % cost     # default: naked number reads as mana
+		CardTypes.CostType.HEALTH:
+			cost_label = "%d HP" % cost
+		_:
+			cost_label = "%d" % cost
+	return "%s  (%s)" % [ability_name, cost_label]
+
+
 # =============================================================================
 # Public API
 # =============================================================================
@@ -134,7 +156,7 @@ func show_for_creature(creature: Creature, screen_pos: Vector2, has_attack_targe
 		var ability_name: String = ability.get("name", "Active %d" % (i + 1))
 
 		var btn: Button = Button.new()
-		btn.text = ability_name
+		btn.text = _format_active_button_label(ability, ability_name)
 		btn.custom_minimum_size = Vector2(0, BUTTON_HEIGHT)
 		btn.add_theme_font_size_override("font_size", BUTTON_FONT_SIZE)
 		btn.disabled = not creature.can_use_active(i, _ctx)

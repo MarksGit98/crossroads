@@ -6,6 +6,9 @@
 [ext_resource type="PackedScene" uid="uid://beb4c3h4kuufp" path="res://scenes/hand/hand.tscn" id="4"]
 [ext_resource type="PackedScene" uid="uid://c6dgdwa17den4" path="res://scenes/deck/deck.tscn" id="5"]
 [ext_resource type="PackedScene" path="res://scenes/ui/creature_action_menu.tscn" id="6_menu"]
+[ext_resource type="PackedScene" uid="uid://cv8r3nqr8wt6p" path="res://scenes/deck/card_pile_display.tscn" id="7_pile"]
+[ext_resource type="Texture2D" path="res://assets/ui/piles/discard_pile.png" id="8_discard_tex"]
+[ext_resource type="Texture2D" path="res://assets/ui/piles/graveyard.png" id="9_graveyard_tex"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_ejjer"]
 font_size = 80
@@ -32,6 +35,16 @@ layer = 10
 layer = 10
 
 [node name="Deck" parent="DeckLayer" unique_id=1050618728 instance=ExtResource("5")]
+
+[node name="DiscardPile" parent="DeckLayer" unique_id=1050618729 instance=ExtResource("7_pile")]
+pile_kind = 0
+display_title = "Discard"
+icon_texture = ExtResource("8_discard_tex")
+
+[node name="GraveyardPile" parent="DeckLayer" unique_id=1050618730 instance=ExtResource("7_pile")]
+pile_kind = 1
+display_title = "Graveyard"
+icon_texture = ExtResource("9_graveyard_tex")
 
 [node name="MenuLayer" type="CanvasLayer" parent="." unique_id=403329396]
 layer = 15

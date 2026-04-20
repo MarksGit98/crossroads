@@ -1,0 +1,17 @@
+[gd_scene format=3 uid="uid://dbq5roaavlx3c"]
+
+[ext_resource type="PackedScene" uid="uid://dhmnojgcubeqc" path="res://scenes/creatures/creature.tscn" id="1_base"]
+[ext_resource type="Script" uid="uid://cbw8skgcjltof" path="res://scripts/creatures/viking_creature.gd" id="2_script"]
+[ext_resource type="SpriteFrames" path="res://resources/creatures/viking/rusalka_frames.tres" id="3_frames"]
+
+[node name="Rusalka" unique_id=582091001 instance=ExtResource("1_base")]
+script = ExtResource("2_script")
+## Shrunk to 100px so she reads as a small, lithe water spirit relative to
+## the burlier Vikings. Her 48×48 source frames fill the whole canvas (no
+## transparent padding), so a given pixel height makes her look visually
+## larger than other creatures whose art leaves breathing room — hence
+## the lower target.
+target_display_height = 100.0
+
+[node name="AnimatedSprite2D" parent="." index="0" unique_id=48825108]
+sprite_frames = ExtResource("3_frames")

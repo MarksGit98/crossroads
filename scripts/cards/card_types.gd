@@ -226,6 +226,9 @@ enum EffectType {
 					 ## in path, stops at impassable terrain, lands as a
 					 ## ThrownAxe deployable at the final reachable hex.
 					 ## Consumes one charge of deployable_charges[<axe_id>].
+	UPGRADE_CREATURE,## Upgrade the target creature — sets is_upgraded so every
+					 ## active/passive resolves to its upgraded variant for the
+					 ## rest of the run. No-op if the target is already upgraded.
 }
 
 

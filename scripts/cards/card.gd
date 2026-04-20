@@ -271,6 +271,17 @@ func needs_targeting() -> bool:
 	return false
 
 
+## How many distinct target hexes the player must click before the card
+## fires. Reads card_data.target_count (default 1). Multi-target cards
+## (N >= 2) keep the Hand in targeting mode until every target is selected;
+## the Nth click commits the play. Override in subclasses only if the
+## count depends on runtime state beyond card_data.
+func target_count() -> int:
+	if card_data == null:
+		return 1
+	return maxi(card_data.target_count, 1)
+
+
 # =============================================================================
 # Area2D signals (kept for compatibility — hover handled by Hand polling)
 # =============================================================================

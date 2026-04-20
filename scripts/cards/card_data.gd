@@ -31,8 +31,23 @@ extends Resource
 
 # --- Spell targeting (used by spells, traps, terrain mods) ---
 @export var target_rule: CardTypes.TargetRule
+
+## Legacy range field. Convention: spells and equipment IGNORE this — they
+## can target any hex on the board subject to card-text conditions (which
+## live separately in play_conditions / effect validators). Only creature
+## actives enforce a range, via the "range" field in each active's dict.
+## Kept exported for back-compat with data files that set it.
 @export var spell_range: int
 @export var aoe_radius: int
+
+## How many distinct hexes the player must select before the card resolves.
+## Default 1 (single-target). Values >= 2 force multi-target targeting:
+## the Hand keeps the player in targeting mode until N valid hexes have
+## been clicked; the Nth click commits the play. Duplicate clicks on the
+## same hex are ignored. Use AoE for "one click hits many" — target_count
+## is specifically for "pick N different hexes" (e.g. "deal 2 damage to
+## any 3 enemies").
+@export var target_count: int = 1
 
 # --- Keywords ---
 @export var keywords: Array[CardTypes.Keyword] = []

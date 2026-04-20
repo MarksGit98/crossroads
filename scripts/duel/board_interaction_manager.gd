@@ -58,6 +58,17 @@ var _selected_creature: Creature = null
 var _valid_targets: Array[Vector2i] = []
 var _active_ability_index: int = -1
 
+## Hexes the player has clicked so far during a multi-target active ability.
+## Single-target actives never accumulate here — the first click fires
+## immediately. Multi-target actives (ability["target_count"] >= 2) gather
+## here until the required count is reached, then fire with all of them.
+var _selected_active_targets: Array[Vector2i] = []
+
+## The required target count for the active currently being aimed. Cached
+## from the ability dict at _enter_active_targeting time so we don't
+## re-resolve the variant per click.
+var _required_active_target_count: int = 1
+
 ## Shared targeting arrow, spawned once in setup() and kept as a sibling of
 ## the creatures node so it renders in world space. Driven by _process()
 ## whenever we're in a targeting state.
@@ -378,14 +389,16 @@ func _enter_active_targeting(ability_index: int) -> void:
 		return
 
 	_active_ability_index = ability_index
+	_selected_active_targets.clear()
 	# Go through the creature's variant-aware accessor so an upgraded
 	# Wizard picks up Arcane Blast+ rules (range, target_rule, etc.).
 	var ability: Dictionary = _selected_creature.get_active(_active_ability_index)
 	var target_rule: int = ability.get("target_rule", CardTypes.TargetRule.ANY_HEX)
+	_required_active_target_count = maxi(ability.get("target_count", 1), 1)
 
 	# SELF-targeting abilities execute immediately without a targeting phase.
 	if target_rule == CardTypes.TargetRule.SELF:
-		_execute_active_on_target(_selected_creature.hex_position)
+		_execute_active_on_targets([_selected_creature.hex_position])
 		return
 
 	# Compute valid targets and highlight them.
@@ -394,31 +407,54 @@ func _enter_active_targeting(ability_index: int) -> void:
 		_cancel_interaction()
 		return
 
-	var highlights: Dictionary = {}
-	for coord: Vector2i in _valid_targets:
-		highlights[coord] = ACTIVE_HIGHLIGHT_COLOR
-	hex_grid.set_highlights(highlights)
-
+	_paint_active_targeting_highlights()
 	_transition_to(BoardState.ACTIVE_TARGETING)
 
 
 func _handle_active_target_click(coord: Vector2i) -> void:
 	if coord not in _valid_targets:
 		return
+	if coord in _selected_active_targets:
+		return  # No duplicate selections — player picks another hex.
 
-	_execute_active_on_target(coord)
+	_selected_active_targets.append(coord)
+
+	# Still need more targets? Re-paint with the new selection in a brighter
+	# shade and wait for the next click.
+	if _selected_active_targets.size() < _required_active_target_count:
+		_paint_active_targeting_highlights()
+		return
+
+	# All targets picked — fire with the full list.
+	_execute_active_on_targets(_selected_active_targets.duplicate())
 
 
-## Execute the selected active ability against a target hex.
-func _execute_active_on_target(coord: Vector2i) -> void:
+## Paint the pending-target highlights: all valid hexes in the base purple,
+## and already-committed selections in a brighter shade so the player can
+## see what they've already picked during a multi-target ability.
+func _paint_active_targeting_highlights() -> void:
+	var highlights: Dictionary = {}
+	for coord: Vector2i in _valid_targets:
+		highlights[coord] = ACTIVE_HIGHLIGHT_COLOR
+	for coord: Vector2i in _selected_active_targets:
+		highlights[coord] = Color(0.95, 0.55, 1.0, 0.65)  # brighter purple
+	hex_grid.set_highlights(highlights)
+
+
+## Execute the selected active ability against a list of target hexes.
+## For single-target abilities this is a 1-element array; for multi-target
+## it's however many the player clicked.
+func _execute_active_on_targets(targets: Array[Vector2i]) -> void:
 	_transition_to(BoardState.EXECUTING)
 	hex_grid.clear_highlights()
 	if _arrow:
 		_arrow.hide_arrow()
 
-	# Stamp the target hex on the context so effects can read it uniformly
-	# with how hand-played spell targets are passed.
-	ctx.set_targets([coord], [], _selected_creature)
+	# Stamp the full target list onto the context so effects can read it
+	# uniformly with hand-played spell targets. Effect resolvers that only
+	# care about the first target (SELECTED etc.) still work because they
+	# index [0]; AoE/multi-hit effects iterate the whole array.
+	ctx.set_targets(targets, [], _selected_creature)
 	_selected_creature.use_active(_active_ability_index, ctx)
 	ctx.clear_transient()
 
@@ -428,7 +464,9 @@ func _execute_active_on_target(coord: Vector2i) -> void:
 
 	_selected_creature = null
 	_valid_targets.clear()
+	_selected_active_targets.clear()
 	_active_ability_index = -1
+	_required_active_target_count = 1
 	_transition_to(BoardState.IDLE)
 
 
@@ -492,7 +530,9 @@ func _cancel_interaction() -> void:
 		_arrow.hide_arrow()
 	_selected_creature = null
 	_valid_targets.clear()
+	_selected_active_targets.clear()
 	_active_ability_index = -1
+	_required_active_target_count = 1
 	_transition_to(BoardState.IDLE)
 
 

@@ -488,11 +488,12 @@ func _enter_targeting(card: Card, targets: Array[Vector2i]) -> void:
 	_selected_targets.clear()
 	_valid_targets = targets
 
-	# Determine how many targets are needed (multi-hex traps).
-	if card is TrapCard:
-		_required_target_count = (card as TrapCard).target_hex_count()
-	else:
-		_required_target_count = 1
+	# Determine how many targets are needed. Every Card type (and any trap
+	# subclass) reports this via target_count() — base Card reads
+	# card_data.target_count (default 1); TrapCard additionally falls back
+	# to legacy aoe_radius-as-count data. Supports general multi-target
+	# spells / equips / creature summons without type-specific branches.
+	_required_target_count = card.target_count()
 
 	# Highlight valid hexes on the board.
 	_highlight_valid_targets()

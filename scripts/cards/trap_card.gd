@@ -35,9 +35,18 @@ func needs_targeting() -> bool:
 	return true
 
 
-## How many hexes this trap needs selected. Uses aoe_radius from data if set.
-func target_hex_count() -> int:
-	if card_data and card_data.aoe_radius > 0:
+## Multi-hex traps are authored by setting card_data.target_count >= 2;
+## the base Card.target_count() covers that path. Legacy trap data that
+## used aoe_radius as a target count falls back here so old cards still work.
+func target_count() -> int:
+	if card_data == null:
+		return 1
+	if card_data.target_count > 1:
+		return card_data.target_count
+	# Legacy fallback — trap cards predate target_count and repurposed
+	# aoe_radius as a hex count. New trap cards should set target_count
+	# directly; this keeps old data working without migration.
+	if card_data.aoe_radius > 0:
 		return card_data.aoe_radius
 	return 1
 
